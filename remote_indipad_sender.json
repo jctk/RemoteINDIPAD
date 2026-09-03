@@ -1,0 +1,37 @@
+{
+  "default_device": "default",
+  "profiles": {
+    "JC-U3712T": {
+      "stick_axes": {
+        "left_x": 0,
+        "left_y": 1,
+        "right_x": 2,
+        "right_y": 4
+      }
+    },
+    "Xbox One S Controller": {
+      "stick_axes": {
+        "left_x": 0,
+        "left_y": 1,
+        "right_x": 2,
+        "right_y": 3
+      }
+    },
+    "DualSense Wireless Controller": {
+      "stick_axes": {
+        "left_x": 0,
+        "left_y": 1,
+        "right_x": 3,
+        "right_y": 5
+      }
+    },
+    "default": {
+      "stick_axes": {
+        "left_x": 0,
+        "left_y": 1,
+        "right_x": 2,
+        "right_y": 3
+      }
+    }
+  }
+}
