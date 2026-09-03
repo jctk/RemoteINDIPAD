@@ -11,7 +11,7 @@ except ImportError:  # pragma: no cover - fallback for missing ctypes
     ctypes = None
 
 
-HOST = "127.0.0.1"
+HOST = "0.0.0.0"
 PORT = 50007
 
 _DEBUG_JSON_CURSOR_SAVED = False
