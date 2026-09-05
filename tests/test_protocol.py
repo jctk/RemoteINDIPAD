@@ -37,6 +37,22 @@ class ProtocolTests(unittest.TestCase):
         invalid = {"ts": 1.0, "type": "axis", "device": "gamepad", "buttons": {}, "mode": "slew"}
         self.assertFalse(protocol.validate_message(invalid))
 
+    def test_build_heartbeat_payload_has_expected_fields(self):
+        payload = protocol.build_heartbeat_payload()
+        self.assertIn("ts", payload)
+        self.assertEqual(payload["type"], "heartbeat")
+        self.assertEqual(payload["device"], "gamepad")
+        self.assertEqual(payload["status"], "alive")
+
+    def test_validate_message_accepts_heartbeat_payload(self):
+        heartbeat = {"ts": 1.0, "type": "heartbeat", "device": "gamepad", "status": "alive"}
+        self.assertTrue(protocol.validate_message(heartbeat))
+
+    def test_heartbeat_timeout_is_detected_only_after_threshold(self):
+        now = 100.0
+        self.assertFalse(receiver.Receiver.heartbeat_is_lost(now - 4.9, 5.0, now))
+        self.assertTrue(receiver.Receiver.heartbeat_is_lost(now - 5.1, 5.0, now))
+
     def test_debug_json_output_is_pretty_and_readable(self):
         rendered = receiver.format_debug_json({"left_x": 0.5, "button_0": True})
         self.assertIn("\n", rendered)

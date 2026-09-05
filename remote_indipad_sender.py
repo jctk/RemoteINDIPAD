@@ -412,7 +412,17 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
 
         step = 0
         last_signature = None
+        last_heartbeat = 0.0
+        heartbeat_interval = 1.0
         while True:
+            now = time.monotonic()
+            if now - last_heartbeat >= heartbeat_interval:
+                heartbeat = protocol.build_heartbeat_payload()
+                if protocol.validate_message(heartbeat):
+                    packet = protocol.serialize_message(heartbeat)
+                    sock.sendall((packet + "\n").encode("utf-8"))
+                last_heartbeat = now
+
             if demo:
                 axes = demo_axes_state(step)
                 buttons = demo_buttons(step)

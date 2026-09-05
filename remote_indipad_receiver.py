@@ -91,10 +91,17 @@ def print_debug_json(label: str, value) -> None:
 
 
 class Receiver:
-    def __init__(self, host: str = HOST, port: int = PORT):
+    def __init__(self, host: str = HOST, port: int = PORT, heartbeat_timeout: float = 5.0):
         self.host = host
         self.port = port
+        self.heartbeat_timeout = heartbeat_timeout
         self._stop_event = threading.Event()
+
+    @staticmethod
+    def heartbeat_is_lost(last_seen: float, heartbeat_timeout: float, now: Optional[float] = None) -> bool:
+        if now is None:
+            now = time.monotonic()
+        return (now - last_seen) > heartbeat_timeout
 
     def start(self):
         thread = threading.Thread(target=self._serve, daemon=True)
@@ -130,13 +137,39 @@ class Receiver:
 
                 with conn:
                     print(f"[receiver] connected from {addr}", flush=True)
+                    conn.settimeout(0.5)
+                    heartbeat_lost = False
+                    last_seen = time.monotonic()
                     while not self._stop_event.is_set():
                         try:
                             data = conn.recv(4096)
                         except socket.timeout:
+                            if self.heartbeat_is_lost(last_seen, self.heartbeat_timeout):
+                                if not heartbeat_lost:
+                                    print(
+                                        f"[receiver] heartbeat timeout: no valid message for {self.heartbeat_timeout:.1f}s",
+                                        flush=True,
+                                    )
+                                    heartbeat_lost = True
                             continue
-                        if not data:
+                        except OSError:
+                            if not heartbeat_lost:
+                                print(
+                                    f"[receiver] heartbeat timeout: no valid message for {self.heartbeat_timeout:.1f}s",
+                                    flush=True,
+                                )
+                                heartbeat_lost = True
                             break
+
+                        if not data:
+                            if not heartbeat_lost:
+                                print(
+                                    f"[receiver] heartbeat timeout: no valid message for {self.heartbeat_timeout:.1f}s",
+                                    flush=True,
+                                )
+                                heartbeat_lost = True
+                            break
+
                         payload = data.decode("utf-8", errors="replace").strip()
                         if not payload:
                             continue
@@ -145,7 +178,13 @@ class Receiver:
                                 continue
                             try:
                                 obj = json.loads(line)
+                                if obj.get("type") == "heartbeat":
+                                    last_seen = time.monotonic()
+                                    heartbeat_lost = False
+                                    continue
                                 extract_dpad_state(obj)
+                                last_seen = time.monotonic()
+                                heartbeat_lost = False
                                 print_debug_json("[receiver] json", obj)
                             except json.JSONDecodeError as exc:
                                 print(f"[receiver] invalid json: {line} ({exc})", flush=True)
