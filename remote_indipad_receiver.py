@@ -49,20 +49,45 @@ def clear_console() -> None:
 clear_console()
 
 
+def _normalize_json_for_display(value):
+    if isinstance(value, dict):
+        normalized = {}
+        for key, item in value.items():
+            normalized[key] = _normalize_json_for_display(item)
+
+        if all(isinstance(key, str) and key.startswith("button_") for key in normalized):
+            normalized = dict(sorted(normalized.items(), key=lambda pair: _button_sort_key(pair[0])))
+        return normalized
+    if isinstance(value, list):
+        return [_normalize_json_for_display(item) for item in value]
+    return value
+
+
+def _button_sort_key(key: str):
+    if isinstance(key, str) and key.startswith("button_"):
+        suffix = key[len("button_") :]
+        if suffix.isdigit():
+            return (0, int(suffix))
+    return (1, str(key))
+
+
 def format_debug_json(value) -> str:
-    return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+    return json.dumps(_normalize_json_for_display(value), ensure_ascii=False, indent=2)
 
 
 def extract_dpad_state(payload):
     if not isinstance(payload, dict):
         return {"pressed": [], "all": []}
 
-    buttons = payload.get("buttons", {})
-    if not isinstance(buttons, dict):
+    dpad = payload.get("dpad", {})
+    if not isinstance(dpad, dict):
+        dpad = payload.get("buttons", {})
+
+    if not isinstance(dpad, dict):
         return {"pressed": [], "all": []}
 
-    dpad_keys = [key for key in buttons if key.startswith("dpad_")]
-    pressed = [key for key in dpad_keys if bool(buttons.get(key))]
+    dpad_keys = [key for key in dpad if key.startswith("dpad_")]
+    pressed = [key for key in dpad_keys if bool(dpad.get(key))]
     return {"pressed": pressed, "all": dpad_keys}
 
 

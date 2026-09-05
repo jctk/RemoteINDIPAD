@@ -13,6 +13,7 @@ class ProtocolTests(unittest.TestCase):
         payload = protocol.build_payload(
             axes={"left_x": 0.25, "left_y": -0.5},
             buttons={"button_0": True, "button_1": False},
+            dpad={"dpad_right": True, "dpad_left": False},
             mode="slew",
         )
         self.assertIn("ts", payload)
@@ -20,21 +21,25 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(payload["device"], "gamepad")
         self.assertEqual(payload["mode"], "slew")
         self.assertAlmostEqual(payload["axes"]["left_x"], 0.25)
+        self.assertTrue(payload["dpad"]["dpad_right"])
         self.assertEqual(payload["buttons"]["button_0"], True)
+        self.assertEqual(list(payload.keys())[3:6], ["axes", "dpad", "buttons"])
 
     def test_round_trip_serialization(self):
         original = protocol.build_payload(
             axes={"left_x": 0.0, "left_y": 1.0},
             buttons={"button_5": True},
+            dpad={"dpad_up": False, "dpad_right": True},
             mode="track",
         )
         serialized = protocol.serialize_message(original)
         recovered = protocol.parse_message(serialized)
         self.assertEqual(recovered["mode"], "track")
+        self.assertTrue(recovered["dpad"]["dpad_right"])
         self.assertEqual(recovered["buttons"]["button_5"], True)
 
     def test_validate_message_rejects_missing_axes(self):
-        invalid = {"ts": 1.0, "type": "axis", "device": "gamepad", "buttons": {}, "mode": "slew"}
+        invalid = {"ts": 1.0, "type": "axis", "device": "gamepad", "dpad": {}, "buttons": {}, "mode": "slew"}
         self.assertFalse(protocol.validate_message(invalid))
 
     def test_build_heartbeat_payload_has_expected_fields(self):
@@ -58,6 +63,29 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("\n", rendered)
         self.assertIn('  "left_x": 0.5', rendered)
         self.assertIn('  "button_0": true', rendered)
+
+    def test_debug_json_keeps_numeric_button_order(self):
+        rendered = receiver.format_debug_json({
+            "axes": {},
+            "dpad": {},
+            "buttons": {
+                "button_1": False,
+                "button_10": False,
+                "button_11": False,
+                "button_12": False,
+                "button_2": False,
+                "button_3": False,
+                "button_4": False,
+                "button_5": False,
+                "button_6": False,
+                "button_7": False,
+                "button_8": False,
+                "button_9": False,
+            },
+        })
+        self.assertLess(rendered.index('"button_1"'), rendered.index('"button_2"'))
+        self.assertLess(rendered.index('"button_9"'), rendered.index('"button_10"'))
+        self.assertLess(rendered.index('"button_10"'), rendered.index('"button_11"'))
 
     def test_sender_debug_json_output_is_pretty_and_readable(self):
         rendered = sender.format_debug_json({"left_x": -0.25, "button_1": False})
@@ -167,15 +195,17 @@ class ProtocolTests(unittest.TestCase):
             def get_numbuttons(self):
                 return 0
 
-        axes, buttons = sender.read_gamepad_state(FakeJoy())
+        axes, buttons, dpad = sender.read_gamepad_state(FakeJoy())
         self.assertEqual(axes["left_x"], 0.0)
-        self.assertTrue(buttons["dpad_right"])
-        self.assertFalse(buttons.get("dpad_left", False))
+        self.assertTrue(dpad["dpad_right"])
+        self.assertFalse(dpad.get("dpad_left", False))
+        self.assertNotIn("dpad_right", buttons)
 
     def test_receiver_extracts_dpad_state_from_payload(self):
         payload = {
             "axes": {"left_x": 0.0, "left_y": 0.0},
-            "buttons": {"dpad_up": False, "dpad_right": True, "button_1": True},
+            "dpad": {"dpad_up": False, "dpad_right": True},
+            "buttons": {"button_1": True},
             "mode": "slew",
         }
         summary = receiver.extract_dpad_state(payload)

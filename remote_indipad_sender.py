@@ -153,8 +153,30 @@ def clear_console() -> None:
 clear_console()
 
 
+def _normalize_json_for_display(value):
+    if isinstance(value, dict):
+        normalized = {}
+        for key, item in value.items():
+            normalized[key] = _normalize_json_for_display(item)
+
+        if all(isinstance(key, str) and key.startswith("button_") for key in normalized):
+            normalized = dict(sorted(normalized.items(), key=lambda pair: _button_sort_key(pair[0])))
+        return normalized
+    if isinstance(value, list):
+        return [_normalize_json_for_display(item) for item in value]
+    return value
+
+
+def _button_sort_key(key: str):
+    if isinstance(key, str) and key.startswith("button_"):
+        suffix = key[len("button_") :]
+        if suffix.isdigit():
+            return (0, int(suffix))
+    return (1, str(key))
+
+
 def format_debug_json(value) -> str:
-    return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+    return json.dumps(_normalize_json_for_display(value), ensure_ascii=False, indent=2)
 
 
 def print_debug_json(label: str, value) -> None:
@@ -194,9 +216,11 @@ def normalize_axes(raw_axes):
     return normalized
 
 
-def state_signature(axes, buttons):
+def state_signature(axes, buttons, dpad=None):
+    dpad = {} if dpad is None else dpad
     return (
         tuple(sorted((k, round(float(v), 4)) for k, v in axes.items())),
+        tuple(sorted((k, bool(v)) for k, v in dpad.items())),
         tuple(sorted((k, bool(v)) for k, v in buttons.items())),
     )
 
@@ -323,6 +347,7 @@ def read_gamepad_state(joy, axis_config=None):
     for i in range(min(12, joy.get_numbuttons())):
         buttons[f"button_{i + 1}"] = bool(joy.get_button(i))
 
+    dpad = {}
     if hasattr(joy, "get_hat"):
         try:
             hat_x, hat_y = joy.get_hat(0)
@@ -331,17 +356,17 @@ def read_gamepad_state(joy, axis_config=None):
                 hat_x, hat_y = joy.get_hat()
             except TypeError:
                 hat_x, hat_y = (0, 0)
-        buttons["dpad_up"] = hat_y == -1
-        buttons["dpad_down"] = hat_y == 1
-        buttons["dpad_left"] = hat_x == -1
-        buttons["dpad_right"] = hat_x == 1
+        dpad["dpad_up"] = hat_y == -1
+        dpad["dpad_down"] = hat_y == 1
+        dpad["dpad_left"] = hat_x == -1
+        dpad["dpad_right"] = hat_x == 1
 
     return {
         "left_x": left_x,
         "left_y": left_y,
         "right_x": right_x,
         "right_y": right_y,
-    }, buttons
+    }, buttons, dpad
 
 
 def demo_axes_state(step: int):
@@ -426,14 +451,16 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
             if demo:
                 axes = demo_axes_state(step)
                 buttons = demo_buttons(step)
+                dpad = {"dpad_up": False, "dpad_down": False, "dpad_left": False, "dpad_right": False}
             else:
-                axes, buttons = read_gamepad_state(joy, axis_config)
+                axes, buttons, dpad = read_gamepad_state(joy, axis_config)
             axes = normalize_axes(axes)
             buttons = {k: bool(v) for k, v in buttons.items()}
+            dpad = {k: bool(v) for k, v in dpad.items()}
 
-            signature = state_signature(axes, buttons)
+            signature = state_signature(axes, buttons, dpad)
             if last_signature is None or signature != last_signature:
-                message = protocol.build_payload(axes=axes, buttons=buttons, mode="slew")
+                message = protocol.build_payload(axes=axes, buttons=buttons, dpad=dpad, mode="slew")
                 if protocol.validate_message(message):
                     packet = protocol.serialize_message(message)
                     print_debug_json("[sender] json", message)
