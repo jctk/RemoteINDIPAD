@@ -1,6 +1,7 @@
 import io
 import unittest
 from contextlib import redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
 import remote_indipad_protocol as protocol
@@ -58,11 +59,11 @@ class ProtocolTests(unittest.TestCase):
         self.assertFalse(receiver.Receiver.heartbeat_is_lost(now - 4.9, 5.0, now))
         self.assertTrue(receiver.Receiver.heartbeat_is_lost(now - 5.1, 5.0, now))
 
-    def test_debug_json_output_is_pretty_and_readable(self):
+    def test_debug_json_output_is_single_line(self):
         rendered = receiver.format_debug_json({"left_x": 0.5, "button_0": True})
-        self.assertIn("\n", rendered)
-        self.assertIn('  "left_x": 0.5', rendered)
-        self.assertIn('  "button_0": true', rendered)
+        self.assertNotIn("\n", rendered)
+        self.assertIn('"left_x":0.5', rendered)
+        self.assertIn('"button_0":true', rendered)
 
     def test_debug_json_keeps_numeric_button_order(self):
         rendered = receiver.format_debug_json({
@@ -89,9 +90,9 @@ class ProtocolTests(unittest.TestCase):
 
     def test_sender_debug_json_output_is_pretty_and_readable(self):
         rendered = sender.format_debug_json({"left_x": -0.25, "button_1": False})
-        self.assertIn("\n", rendered)
-        self.assertIn('  "left_x": -0.25', rendered)
-        self.assertIn('  "button_1": false', rendered)
+        self.assertNotIn("\n", rendered)
+        self.assertIn('"left_x":-0.25', rendered)
+        self.assertIn('"button_1":false', rendered)
 
     def test_debug_json_output_reserves_an_own_update_area(self):
         sender._DEBUG_JSON_CURSOR_SAVED = False
@@ -238,6 +239,129 @@ class ProtocolTests(unittest.TestCase):
         names = ["DualSense Wireless Controller", "Xbox Controller"]
         self.assertEqual(sender.resolve_gamepad_selection(names, "xbox"), 1)
         self.assertEqual(sender.resolve_gamepad_selection(names, "1"), 0)
+
+    def test_build_action_payload_uses_abstract_gamepad_actions(self):
+        payload = protocol.build_action_payload(action="MOUNT_NORTH", pressed=True, source="dpad")
+        self.assertEqual(payload["type"], "action")
+        self.assertEqual(payload["action"], "MOUNT_NORTH")
+        self.assertTrue(payload["pressed"])
+        self.assertEqual(payload["source"], "dpad")
+
+    def test_validate_message_accepts_action_payload(self):
+        payload = {
+            "ts": 1.0,
+            "type": "action",
+            "device": "gamepad",
+            "action": "MOUNT_STOP",
+            "pressed": False,
+            "source": "dpad",
+        }
+        self.assertTrue(protocol.validate_message(payload))
+
+    def test_dpad_to_abstract_action_mapping(self):
+        mapping = sender.build_action_events({"dpad_up": False, "dpad_left": False, "dpad_right": False, "dpad_down": True}, {})
+        self.assertIn({"action": "MOUNT_NORTH", "pressed": True, "source": "dpad"}, mapping)
+
+        mapping = sender.build_action_events(
+            {"dpad_up": False, "dpad_left": False, "dpad_right": False, "dpad_down": False},
+            {},
+            previous_dpad={"dpad_down": True},
+        )
+        self.assertIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
+
+    def test_dpad_stop_is_emitted_only_after_all_directions_are_released(self):
+        mapping = sender.build_action_events(
+            {"dpad_up": False, "dpad_left": True, "dpad_right": False, "dpad_down": False},
+            {},
+            previous_dpad={"dpad_up": True, "dpad_left": False, "dpad_right": False, "dpad_down": False},
+        )
+        self.assertNotIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
+        self.assertIn({"action": "MOUNT_WEST", "pressed": True, "source": "dpad"}, mapping)
+
+        mapping = sender.build_action_events(
+            {"dpad_up": False, "dpad_left": False, "dpad_right": False, "dpad_down": False},
+            {},
+            previous_dpad={"dpad_up": False, "dpad_left": True, "dpad_right": False, "dpad_down": False},
+        )
+        self.assertIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
+
+    def test_policy_button_mapping_matches_documented_gamepad_layout(self):
+        mapping = sender.build_action_events(
+            {},
+            {
+                "button_5": True,
+                "button_6": True,
+                "button_7": True,
+                "button_8": True,
+                "button_9": True,
+                "button_10": True,
+                "button_1": True,
+                "button_2": True,
+                "button_3": True,
+                "button_4": True,
+            },
+        )
+
+        expected_actions = {
+            "MOUNT_STEP_UP",
+            "FOCUS_IN",
+            "MOUNT_STEP_DOWN",
+            "FOCUS_OUT",
+            "MOUNT_STOP",
+            "FOCUS_STOP",
+            "FOCUS_STEP_UP",
+            "FOCUS_STEP_DOWN",
+            "CAA_ROTATE_COUNTER_CLOCKWISE",
+            "CAA_ROTATE_CLOCKWISE",
+        }
+        self.assertTrue(expected_actions.issubset({event["action"] for event in mapping}))
+
+    def test_action_mapping_can_be_defined_in_gui_settings(self):
+        settings = {
+            "controller": "JC-U3712T",
+            "host": "localhost",
+            "port": 50007,
+            "heartbeat": False,
+            "action_mapping": {
+                "dpad_down": "CUSTOM_NORTH",
+                "button_6": "CUSTOM_FOCUS_IN",
+            },
+        }
+
+        resolved = sender.resolve_action_mapping(settings)
+        self.assertEqual(resolved["dpad_down"], "CUSTOM_NORTH")
+        self.assertEqual(resolved["button_6"], "CUSTOM_FOCUS_IN")
+        self.assertEqual(resolved["dpad_up"], "MOUNT_SOUTH")
+
+        mapping = sender.build_action_events({"dpad_down": True}, {}, action_map=resolved)
+        self.assertIn({"action": "CUSTOM_NORTH", "pressed": True, "source": "dpad"}, mapping)
+
+    def test_default_mapping_uses_gamepad_profile_value(self):
+        config = sender.load_axis_config(Path("D:/Projects/RemoteINDIPAD/gamepad_profiles.json"))
+        default_mapping = sender.get_default_action_mapping("JC-U3712T", config)
+        self.assertEqual(default_mapping["dpad_down"], "MOUNT_NORTH")
+        self.assertEqual(default_mapping["button_6"], "FOCUS_IN")
+
+    def test_idle_state_does_not_emit_action_events(self):
+        mapping = sender.build_action_events(
+            {"dpad_up": False, "dpad_left": False, "dpad_right": False, "dpad_down": False},
+            {"button_1": False, "button_2": False, "button_3": False, "button_4": False},
+        )
+        self.assertEqual(mapping, [])
+
+    def test_load_axis_config_falls_back_when___file___is_missing(self):
+        original = sender.__dict__.get("__file__")
+        sender.__dict__.pop("__file__", None)
+        try:
+            config = sender.load_axis_config()
+            self.assertIn("profiles", config)
+            self.assertIn("default", config["profiles"])
+        finally:
+            if original is not None:
+                sender.__dict__["__file__"] = original
+
+    def test_resolve_gamepad_selection_by_index_and_name(self):
+        names = ["DualSense Wireless Controller", "Xbox Controller"]
         self.assertEqual(sender.resolve_gamepad_selection(names, "2"), 1)
         self.assertEqual(sender.resolve_gamepad_selection(names, "DualSense Wireless Controller"), 0)
 
@@ -251,6 +375,17 @@ class ProtocolTests(unittest.TestCase):
         self.assertRaises(ValueError, sender.resolve_gamepad_selection, names, "3")
         with patch("builtins.input", side_effect=["3", "2"]):
             self.assertEqual(sender.resolve_gamepad_selection(names, None), 1)
+
+    def test_receiver_dispatches_abstract_actions_as_debug_entries(self):
+        with patch("builtins.print") as mocked_print:
+            receiver.dispatch_abstract_action("MOUNT_NORTH", True, "dpad")
+            receiver.dispatch_abstract_action("MOUNT_STOP", False, "dpad")
+            receiver.dispatch_abstract_action("SKYMAP_MOVE", True, "left_stick")
+
+        printed = "\n".join(call.args[0] for call in mocked_print.call_args_list if call.args)
+        self.assertIn("MOUNT_NORTH", printed)
+        self.assertIn("MOUNT_STOP", printed)
+        self.assertIn("SKYMAP_MOVE", printed)
 
 
 if __name__ == "__main__":

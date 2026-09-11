@@ -1,37 +1,26 @@
 {
-  "default_device": "default",
-  "profiles": {
-    "JC-U3712T": {
-      "stick_axes": {
-        "left_x": 0,
-        "left_y": 1,
-        "right_x": 2,
-        "right_y": 4
-      }
-    },
-    "Xbox One S Controller": {
-      "stick_axes": {
-        "left_x": 0,
-        "left_y": 1,
-        "right_x": 2,
-        "right_y": 3
-      }
-    },
-    "DualSense Wireless Controller": {
-      "stick_axes": {
-        "left_x": 0,
-        "left_y": 1,
-        "right_x": 3,
-        "right_y": 5
-      }
-    },
-    "default": {
-      "stick_axes": {
-        "left_x": 0,
-        "left_y": 1,
-        "right_x": 2,
-        "right_y": 3
-      }
-    }
+  "controller": "JC-U3712T",
+  "host": "localhost",
+  "port": 50007,
+  "heartbeat": false,
+  "action_mapping": {
+    "dpad_up": "MOUNT_SOUTH",
+    "dpad_down": "MOUNT_NORTH",
+    "dpad_left": "MOUNT_WEST",
+    "dpad_right": "MOUNT_EAST",
+    "button_1": "FOCUS_STEP_UP",
+    "button_2": "FOCUS_STEP_DOWN",
+    "button_3": "CAA_ROTATE_COUNTER_CLOCKWISE",
+    "button_4": "CAA_ROTATE_CLOCKWISE",
+    "button_5": "MOUNT_STEP_UP",
+    "button_6": "FOCUS_IN",
+    "button_7": "MOUNT_STEP_DOWN",
+    "button_8": "FOCUS_OUT",
+    "button_9": "MOUNT_STOP",
+    "button_10": "FOCUS_STOP",
+    "left_x": "SKYMAP_MOVE",
+    "left_y": "SKYMAP_MOVE",
+    "right_x": "SKYMAP_ROTATE",
+    "right_y": "SKYMAP_ZOOM"
   }
 }

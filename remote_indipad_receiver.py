@@ -14,8 +14,6 @@ except ImportError:  # pragma: no cover - fallback for missing ctypes
 HOST = "0.0.0.0"
 PORT = 50007
 
-_DEBUG_JSON_CURSOR_SAVED = False
-_DEBUG_JSON_LAST_LINES = 0
 
 
 def enable_windows_vt100() -> None:
@@ -72,7 +70,7 @@ def _button_sort_key(key: str):
 
 
 def format_debug_json(value) -> str:
-    return json.dumps(_normalize_json_for_display(value), ensure_ascii=False, indent=2)
+    return json.dumps(_normalize_json_for_display(value), ensure_ascii=False, separators=(",", ":"))
 
 
 def extract_dpad_state(payload):
@@ -92,27 +90,109 @@ def extract_dpad_state(payload):
 
 
 def print_debug_json(label: str, value) -> None:
-    global _DEBUG_JSON_CURSOR_SAVED, _DEBUG_JSON_LAST_LINES
-
     rendered = format_debug_json(value)
-    lines = [f"{label}:"] + rendered.splitlines()
-    total_lines = len(lines)
+    print(f"{label}: {rendered}", flush=True)
 
-    if not _DEBUG_JSON_CURSOR_SAVED:
-        print("\n", end="", flush=True)
-        print("\x1b[s", end="", flush=True)
-        _DEBUG_JSON_CURSOR_SAVED = True
-    else:
-        print("\x1b[u", end="", flush=True)
 
-    for index in range(max(_DEBUG_JSON_LAST_LINES, total_lines)):
-        if index < total_lines:
-            line = lines[index]
-            print("\x1b[2K" + line, end="\n" if index < total_lines - 1 else "", flush=True)
-        else:
-            print("\x1b[2K", end="\n", flush=True)
+def _debug_dispatch(label: str, action: str, pressed: bool, source: str) -> None:
+    print(f"[receiver] dispatch: {label} action={action} pressed={pressed} source={source}", flush=True)
 
-    _DEBUG_JSON_LAST_LINES = total_lines
+
+def handle_mount_north(pressed: bool, source: str = "dpad") -> None:
+    _debug_dispatch("MOUNT_NORTH", "MOUNT_NORTH", pressed, source)
+
+
+def handle_mount_south(pressed: bool, source: str = "dpad") -> None:
+    _debug_dispatch("MOUNT_SOUTH", "MOUNT_SOUTH", pressed, source)
+
+
+def handle_mount_west(pressed: bool, source: str = "dpad") -> None:
+    _debug_dispatch("MOUNT_WEST", "MOUNT_WEST", pressed, source)
+
+
+def handle_mount_east(pressed: bool, source: str = "dpad") -> None:
+    _debug_dispatch("MOUNT_EAST", "MOUNT_EAST", pressed, source)
+
+
+def handle_mount_step_up(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("MOUNT_STEP_UP", "MOUNT_STEP_UP", pressed, source)
+
+
+def handle_mount_step_down(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("MOUNT_STEP_DOWN", "MOUNT_STEP_DOWN", pressed, source)
+
+
+def handle_mount_stop(pressed: bool, source: str = "dpad") -> None:
+    _debug_dispatch("MOUNT_STOP", "MOUNT_STOP", pressed, source)
+
+
+def handle_focus_in(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("FOCUS_IN", "FOCUS_IN", pressed, source)
+
+
+def handle_focus_out(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("FOCUS_OUT", "FOCUS_OUT", pressed, source)
+
+
+def handle_focus_step_up(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("FOCUS_STEP_UP", "FOCUS_STEP_UP", pressed, source)
+
+
+def handle_focus_step_down(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("FOCUS_STEP_DOWN", "FOCUS_STEP_DOWN", pressed, source)
+
+
+def handle_focus_stop(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("FOCUS_STOP", "FOCUS_STOP", pressed, source)
+
+
+def handle_caa_rotate_counter_clockwise(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("CAA_ROTATE_COUNTER_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE", pressed, source)
+
+
+def handle_caa_rotate_clockwise(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("CAA_ROTATE_CLOCKWISE", "CAA_ROTATE_CLOCKWISE", pressed, source)
+
+
+def handle_skymap_move(pressed: bool, source: str = "stick") -> None:
+    _debug_dispatch("SKYMAP_MOVE", "SKYMAP_MOVE", pressed, source)
+
+
+def handle_skymap_zoom(pressed: bool, source: str = "stick") -> None:
+    _debug_dispatch("SKYMAP_ZOOM", "SKYMAP_ZOOM", pressed, source)
+
+
+def handle_skymap_rotate(pressed: bool, source: str = "stick") -> None:
+    _debug_dispatch("SKYMAP_ROTATE", "SKYMAP_ROTATE", pressed, source)
+
+
+_DISPATCH_TABLE = {
+    "MOUNT_NORTH": handle_mount_north,
+    "MOUNT_SOUTH": handle_mount_south,
+    "MOUNT_WEST": handle_mount_west,
+    "MOUNT_EAST": handle_mount_east,
+    "MOUNT_STEP_UP": handle_mount_step_up,
+    "MOUNT_STEP_DOWN": handle_mount_step_down,
+    "MOUNT_STOP": handle_mount_stop,
+    "FOCUS_IN": handle_focus_in,
+    "FOCUS_OUT": handle_focus_out,
+    "FOCUS_STEP_UP": handle_focus_step_up,
+    "FOCUS_STEP_DOWN": handle_focus_step_down,
+    "FOCUS_STOP": handle_focus_stop,
+    "CAA_ROTATE_COUNTER_CLOCKWISE": handle_caa_rotate_counter_clockwise,
+    "CAA_ROTATE_CLOCKWISE": handle_caa_rotate_clockwise,
+    "SKYMAP_MOVE": handle_skymap_move,
+    "SKYMAP_ZOOM": handle_skymap_zoom,
+    "SKYMAP_ROTATE": handle_skymap_rotate,
+}
+
+
+def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown") -> None:
+    handler = _DISPATCH_TABLE.get(action)
+    if handler is None:
+        print(f"[receiver] unknown action: {action} pressed={pressed} source={source}", flush=True)
+        return
+    handler(bool(pressed), str(source))
 
 
 class Receiver:
@@ -207,7 +287,13 @@ class Receiver:
                                     last_seen = time.monotonic()
                                     heartbeat_lost = False
                                     continue
-                                extract_dpad_state(obj)
+                                if obj.get("type") == "action":
+                                    action = obj.get("action")
+                                    pressed = bool(obj.get("pressed", False))
+                                    source = obj.get("source", "unknown")
+                                    dispatch_abstract_action(action, pressed, source)
+                                else:
+                                    extract_dpad_state(obj)
                                 last_seen = time.monotonic()
                                 heartbeat_lost = False
                                 print_debug_json("[receiver] json", obj)

@@ -2,6 +2,7 @@ import json
 import os
 import socket
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -15,25 +16,242 @@ try:
 except ImportError:  # pragma: no cover - fallback for missing joystick package
     pygame = None
 
+try:
+    from PySide6.QtCore import QObject, Signal
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget
+except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is used
+    class QObject:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class _FallbackSignal:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def connect(self, *args, **kwargs):
+            return None
+
+        def emit(self, *args, **kwargs):
+            return None
+
+    Signal = _FallbackSignal
+    QFont = QCheckBox = QComboBox = QFormLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QMessageBox = QPushButton = QTextEdit = QVBoxLayout = QWidget = object
+    QApplication = None
+
 import remote_indipad_protocol as protocol
 
 
 HOST = "127.0.0.1"
 PORT = 50007
 DEADZONE = 0.08
+_MODULE_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
+GUI_SETTINGS_PATH = _MODULE_DIR / "remote_indipad_sender.json"
 DEFAULT_AXIS_CONFIG = {
     "left_x": 0,
     "left_y": 1,
     "right_x": 2,
     "right_y": 4,
 }
+DEFAULT_ACTION_MAPPING = {
+    "dpad_up": "MOUNT_SOUTH",
+    "dpad_down": "MOUNT_NORTH",
+    "dpad_left": "MOUNT_WEST",
+    "dpad_right": "MOUNT_EAST",
+    "button_1": "FOCUS_STEP_UP",
+    "button_2": "FOCUS_STEP_DOWN",
+    "button_3": "CAA_ROTATE_COUNTER_CLOCKWISE",
+    "button_4": "CAA_ROTATE_CLOCKWISE",
+    "button_5": "MOUNT_STEP_UP",
+    "button_6": "FOCUS_IN",
+    "button_7": "MOUNT_STEP_DOWN",
+    "button_8": "FOCUS_OUT",
+    "button_9": "MOUNT_STOP",
+    "button_10": "FOCUS_STOP",
+    "left_x": "SKYMAP_MOVE",
+    "left_y": "SKYMAP_MOVE",
+    "right_x": "SKYMAP_ROTATE",
+    "right_y": "SKYMAP_ZOOM",
+}
+AVAILABLE_ACTIONS = [
+    "",
+    "MOUNT_NORTH",
+    "MOUNT_SOUTH",
+    "MOUNT_WEST",
+    "MOUNT_EAST",
+    "MOUNT_STEP_UP",
+    "MOUNT_STEP_DOWN",
+    "MOUNT_STOP",
+    "FOCUS_IN",
+    "FOCUS_OUT",
+    "FOCUS_STEP_UP",
+    "FOCUS_STEP_DOWN",
+    "FOCUS_STOP",
+    "CAA_ROTATE_COUNTER_CLOCKWISE",
+    "CAA_ROTATE_CLOCKWISE",
+    "SKYMAP_MOVE",
+    "SKYMAP_ZOOM",
+    "SKYMAP_ROTATE",
+]
 
 _DEBUG_JSON_CURSOR_SAVED = False
 _DEBUG_JSON_LAST_LINES = 0
 
 
+def resolve_action_mapping(source: dict | None = None):
+    resolved = DEFAULT_ACTION_MAPPING.copy()
+    if not isinstance(source, dict):
+        return resolved
+
+    nested = source.get("action_mapping") if isinstance(source.get("action_mapping"), dict) else source
+    if not isinstance(nested, dict):
+        return resolved
+
+    for key, value in nested.items():
+        if not isinstance(key, str):
+            continue
+        if not (key.startswith("dpad_") or key.startswith("button_") or key.startswith("left_") or key.startswith("right_")):
+            continue
+        if not isinstance(value, str):
+            continue
+        normalized = value.strip()
+        if normalized:
+            resolved[key] = normalized
+
+    for key, value in DEFAULT_ACTION_MAPPING.items():
+        if key not in resolved:
+            resolved[key] = value
+
+    return resolved
+
+
+def get_default_action_mapping(device_name: str | None = None, config: dict | None = None):
+    loaded = load_axis_config() if config is None else config
+    profile_map = loaded.get("profiles", {}) if isinstance(loaded, dict) else {}
+    if not isinstance(profile_map, dict):
+        profile_map = {}
+
+    query = (str(device_name or "").strip() if device_name is not None else "").strip()
+    if query:
+        if query in profile_map:
+            profile = profile_map[query]
+            if isinstance(profile, dict):
+                mapping = profile.get("action_mapping")
+                if isinstance(mapping, dict):
+                    return resolve_action_mapping(mapping)
+        lowered = query.lower()
+        for profile_name, profile_data in profile_map.items():
+            if str(profile_name).lower() == lowered and isinstance(profile_data, dict):
+                mapping = profile_data.get("action_mapping")
+                if isinstance(mapping, dict):
+                    return resolve_action_mapping(mapping)
+
+    default_device = str(loaded.get("default_device", "")).strip()
+    if default_device and default_device in profile_map:
+        profile = profile_map[default_device]
+        if isinstance(profile, dict):
+            mapping = profile.get("action_mapping")
+            if isinstance(mapping, dict):
+                return resolve_action_mapping(mapping)
+
+    default_profile = profile_map.get("default")
+    if isinstance(default_profile, dict):
+        mapping = default_profile.get("action_mapping")
+        if isinstance(mapping, dict):
+            return resolve_action_mapping(mapping)
+
+    return DEFAULT_ACTION_MAPPING.copy()
+
+
+def get_gamepad_input_rows(selected_device: str | None = None):
+    rows = [
+        ("DPAD Up", "dpad_up"),
+        ("DPAD Down", "dpad_down"),
+        ("DPAD Left", "dpad_left"),
+        ("DPAD Right", "dpad_right"),
+        ("Button 1", "button_1"),
+        ("Button 2", "button_2"),
+        ("Button 3", "button_3"),
+        ("Button 4", "button_4"),
+        ("Button 5", "button_5"),
+        ("Button 6", "button_6"),
+        ("Button 7", "button_7"),
+        ("Button 8", "button_8"),
+        ("Button 9", "button_9"),
+        ("Button 10", "button_10"),
+        ("Button 11", "button_11"),
+        ("Button 12", "button_12"),
+        ("Left Stick X", "left_x"),
+        ("Left Stick Y", "left_y"),
+        ("Right Stick X", "right_x"),
+        ("Right Stick Y", "right_y"),
+    ]
+
+    if selected_device is None:
+        return rows
+
+    lowered = selected_device.lower()
+    if "jc-u3712t" in lowered or "elecom" in lowered:
+        return rows
+
+    return [row for row in rows if row[1] not in {"button_11", "button_12"}]
+
+
+def load_gui_settings(path: str | Path | None = None):
+    config_path = Path(path) if path is not None else GUI_SETTINGS_PATH
+    defaults = {"controller": "", "host": "localhost", "port": 50007, "heartbeat": False, "action_mapping": DEFAULT_ACTION_MAPPING.copy()}
+
+    if not config_path.exists():
+        return defaults.copy()
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as handle:
+            loaded = json.load(handle)
+    except (OSError, ValueError):
+        return defaults.copy()
+
+    if not isinstance(loaded, dict):
+        return defaults.copy()
+
+    controller = loaded.get("controller", "")
+    host = loaded.get("host", "localhost")
+    port = loaded.get("port", 50007)
+    heartbeat = loaded.get("heartbeat", False)
+
+    try:
+        port_value = int(port)
+    except (TypeError, ValueError):
+        port_value = 50007
+
+    return {
+        "controller": str(controller) if controller is not None else "",
+        "host": str(host) if host is not None else "localhost",
+        "port": port_value,
+        "heartbeat": bool(heartbeat),
+        "action_mapping": resolve_action_mapping(loaded),
+    }
+
+
+def save_gui_settings(settings: dict, path: str | Path | None = None):
+    config_path = Path(path) if path is not None else GUI_SETTINGS_PATH
+    payload = {
+        "controller": str(settings.get("controller", "") or ""),
+        "host": str(settings.get("host", "localhost") or "localhost"),
+        "port": int(settings.get("port", 50007) or 50007),
+        "heartbeat": bool(settings.get("heartbeat", False)),
+        "action_mapping": resolve_action_mapping(settings.get("action_mapping", {})),
+    }
+
+    with open(config_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+
+
 def load_axis_config(path: str | Path | None = None):
-    config_path = Path(path) if path is not None else Path(__file__).with_suffix(".json")
+    if path is not None:
+        config_path = Path(path)
+    else:
+        config_path = (_MODULE_DIR / "gamepad_profiles.json")
     config = {"default_device": "", "profiles": {}}
 
     if not config_path.exists():
@@ -176,7 +394,7 @@ def _button_sort_key(key: str):
 
 
 def format_debug_json(value) -> str:
-    return json.dumps(_normalize_json_for_display(value), ensure_ascii=False, indent=2)
+    return json.dumps(_normalize_json_for_display(value), ensure_ascii=False, separators=(",", ":"))
 
 
 def print_debug_json(label: str, value) -> None:
@@ -223,6 +441,39 @@ def state_signature(axes, buttons, dpad=None):
         tuple(sorted((k, bool(v)) for k, v in dpad.items())),
         tuple(sorted((k, bool(v)) for k, v in buttons.items())),
     )
+
+
+def build_action_events(dpad: dict | None = None, buttons: dict | None = None, previous_dpad: dict | None = None, previous_buttons: dict | None = None, action_map: dict | None = None):
+    dpad = {} if dpad is None else dpad
+    buttons = {} if buttons is None else buttons
+    previous_dpad = {} if previous_dpad is None else previous_dpad
+    previous_buttons = {} if previous_buttons is None else previous_buttons
+    events = []
+    resolved_map = resolve_action_mapping(action_map)
+
+    dpad_names = ("dpad_up", "dpad_down", "dpad_left", "dpad_right")
+    any_dpad_pressed = any(bool(dpad.get(name)) for name in dpad_names)
+    previous_any_dpad_pressed = any(bool(previous_dpad.get(name)) for name in dpad_names)
+
+    for name in dpad_names:
+        current_pressed = bool(dpad.get(name))
+        previous_pressed = bool(previous_dpad.get(name))
+        if current_pressed != previous_pressed:
+            if current_pressed:
+                events.append({"action": resolved_map.get(name, DEFAULT_ACTION_MAPPING.get(name, name)), "pressed": True, "source": "dpad"})
+            elif not any_dpad_pressed and previous_any_dpad_pressed:
+                events.append({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"})
+
+    for key, action in resolved_map.items():
+        if not key.startswith("button_"):
+            continue
+        if key in buttons:
+            current_pressed = bool(buttons.get(key))
+            previous_pressed = bool(previous_buttons.get(key))
+            if current_pressed != previous_pressed:
+                events.append({"action": action, "pressed": current_pressed, "source": "button"})
+
+    return events
 
 
 def get_gamepad_name(joy) -> str:
@@ -399,8 +650,9 @@ def demo_buttons(step: int):
     return buttons
 
 
-def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: bool = False, forced_device: str | None = None):
+def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: bool = False, forced_device: str | None = None, action_map: dict | None = None):
     joy = None
+    resolved_action_map = resolve_action_mapping(action_map)
     if demo:
         print("[sender] demo mode enabled", flush=True)
     else:
@@ -439,6 +691,8 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
         last_signature = None
         last_heartbeat = 0.0
         heartbeat_interval = 1.0
+        previous_dpad = {}
+        previous_buttons = {}
         while True:
             now = time.monotonic()
             if now - last_heartbeat >= heartbeat_interval:
@@ -446,6 +700,7 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
                 if protocol.validate_message(heartbeat):
                     packet = protocol.serialize_message(heartbeat)
                     sock.sendall((packet + "\n").encode("utf-8"))
+                    print_debug_json("[sender] heartbeat", heartbeat)
                 last_heartbeat = now
 
             if demo:
@@ -460,20 +715,403 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
 
             signature = state_signature(axes, buttons, dpad)
             if last_signature is None or signature != last_signature:
-                message = protocol.build_payload(axes=axes, buttons=buttons, dpad=dpad, mode="slew")
-                if protocol.validate_message(message):
-                    packet = protocol.serialize_message(message)
-                    print_debug_json("[sender] json", message)
-                    sock.sendall((packet + "\n").encode("utf-8"))
+                action_events = build_action_events(
+                    dpad=dpad,
+                    buttons=buttons,
+                    previous_dpad=previous_dpad,
+                    previous_buttons=previous_buttons,
+                    action_map=resolved_action_map,
+                )
+                for event in action_events:
+                    message = protocol.build_action_payload(
+                        action=event["action"],
+                        pressed=event["pressed"],
+                        source=event["source"],
+                    )
+                    if protocol.validate_message(message):
+                        packet = protocol.serialize_message(message)
+                        print_debug_json("[sender] json", message)
+                        sock.sendall((packet + "\n").encode("utf-8"))
+                previous_dpad = dpad.copy()
+                previous_buttons = buttons.copy()
                 last_signature = signature
 
             step += 1
             time.sleep(interval)
 
 
+class SenderWorker(QObject):
+    status_changed = Signal(str)
+    log_received = Signal(str)
+    connection_changed = Signal(str)
+
+    def __init__(self, host: str, port: int, device_name: str | None = None, action_map: dict | None = None):
+        super().__init__()
+        self.host = host
+        self.port = port
+        self.device_name = device_name
+        self.action_map = resolve_action_mapping(action_map)
+        self._stop_event = threading.Event()
+        self._socket = None
+        self._joy = None
+
+    def stop(self):
+        self._stop_event.set()
+        if self._socket is not None:
+            try:
+                self._socket.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                self._socket.close()
+            except OSError:
+                pass
+            self._socket = None
+
+    def _safe_emit(self, signal, value):
+        try:
+            signal.emit(value)
+        except RuntimeError:
+            pass
+
+    def run(self):
+        try:
+            self._joy = init_gamepad(self.device_name)
+            self._safe_emit(self.connection_changed, f"Connected: {get_gamepad_name(self._joy)}")
+            self._safe_emit(self.status_changed, "Ready")
+            self._socket = socket.create_connection((self.host, self.port), timeout=2.0)
+            self._socket.settimeout(0.25)
+            self._safe_emit(self.log_received, f"Connected to {self.host}:{self.port}")
+
+            last_heartbeat = 0.0
+            previous_dpad = {}
+            previous_buttons = {}
+            while not self._stop_event.is_set():
+                now = time.monotonic()
+                if now - last_heartbeat >= 1.0:
+                    heartbeat = protocol.build_heartbeat_payload()
+                    packet = protocol.serialize_message(heartbeat)
+                    self._socket.sendall((packet + "\n").encode("utf-8"))
+                    self._safe_emit(self.log_received, f"[sender] heartbeat: {packet}")
+                    last_heartbeat = now
+
+                axes, buttons, dpad = read_gamepad_state(self._joy, load_axis_config())
+                axes = normalize_axes(axes)
+                buttons = {k: bool(v) for k, v in buttons.items()}
+                dpad = {k: bool(v) for k, v in dpad.items()}
+
+                for event in build_action_events(
+                    dpad=dpad,
+                    buttons=buttons,
+                    previous_dpad=previous_dpad,
+                    previous_buttons=previous_buttons,
+                    action_map=self.action_map,
+                ):
+                    message = protocol.build_action_payload(
+                        action=event["action"],
+                        pressed=event["pressed"],
+                        source=event["source"],
+                    )
+                    packet = protocol.serialize_message(message)
+                    self._socket.sendall((packet + "\n").encode("utf-8"))
+                    self._safe_emit(self.log_received, json.dumps(message, ensure_ascii=False, separators=(",", ":")))
+
+                previous_dpad = dpad.copy()
+                previous_buttons = buttons.copy()
+                time.sleep(0.05)
+        except Exception as exc:  # pragma: no cover - runtime behavior
+            self._safe_emit(self.connection_changed, f"Error: {exc}")
+            self._safe_emit(self.status_changed, "Disconnected")
+            self._safe_emit(self.log_received, f"[sender] error: {exc}")
+        finally:
+            self._safe_emit(self.connection_changed, "Disconnected")
+            self._safe_emit(self.status_changed, "Disconnected")
+            if self._socket is not None:
+                try:
+                    self._socket.close()
+                except OSError:
+                    pass
+                self._socket = None
+
+
+class IndipadWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("INDIPAD")
+        self.resize(720, 520)
+        self.worker = None
+        self.worker_thread = None
+        self.gui_settings = load_gui_settings()
+
+        central = QWidget(self)
+        self.setCentralWidget(central)
+
+        main_layout = QVBoxLayout(central)
+        form_layout = QFormLayout()
+
+        self.controller_combo = QComboBox()
+        self.host_edit = QLineEdit(self.gui_settings["host"])
+        self.port_edit = QLineEdit(str(self.gui_settings["port"]))
+        self.heartbeat_checkbox = QCheckBox("Heartbeat log")
+        self.heartbeat_checkbox.setChecked(bool(self.gui_settings["heartbeat"]))
+
+        form_layout.addRow("Controller", self.controller_combo)
+
+        host_port_row = QHBoxLayout()
+        host_port_row.addWidget(self.host_edit)
+        host_port_row.addWidget(self.port_edit)
+        form_layout.addRow("Host / Port", host_port_row)
+        form_layout.addRow("Heartbeat", self.heartbeat_checkbox)
+
+        button_row = QHBoxLayout()
+        self.connection_button = QPushButton("Connect")
+        self.mapping_button = QPushButton("Edit Mapping")
+        self.close_button = QPushButton("Close")
+        button_row.addWidget(self.connection_button)
+        button_row.addWidget(self.mapping_button)
+        button_row.addWidget(self.close_button)
+
+        self.console = QTextEdit()
+        self.console.setReadOnly(True)
+        self.console.setFont(QFont("Consolas", 10))
+        self.console.setPlainText("INDIPAD console\n")
+
+        main_layout.addLayout(form_layout)
+        main_layout.addLayout(button_row)
+        main_layout.addWidget(self.console)
+
+        self.connection_button.clicked.connect(self.on_toggle_connection)
+        self.mapping_button.clicked.connect(self.on_edit_mapping)
+        self.close_button.clicked.connect(self.on_close)
+
+        self.refresh_controllers()
+        self.restore_saved_controller()
+        self.log("Ready")
+
+    def log(self, message: str):
+        self.console.append(message)
+        self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+
+    def save_settings(self):
+        settings = {
+            "controller": self.controller_combo.currentText() if self.controller_combo.count() else "",
+            "host": self.host_edit.text().strip() or "localhost",
+            "port": int(self.port_edit.text().strip() or 50007),
+            "heartbeat": self.heartbeat_checkbox.isChecked(),
+            "action_mapping": resolve_action_mapping(self.gui_settings.get("action_mapping")),
+        }
+        if settings["controller"] in {"No controller found", "Controller unavailable"}:
+            settings["controller"] = ""
+        self.gui_settings = settings
+        save_gui_settings(settings)
+
+    def restore_saved_controller(self):
+        saved_controller = self.gui_settings.get("controller", "")
+        if not saved_controller:
+            return
+        for index in range(self.controller_combo.count()):
+            if self.controller_combo.itemText(index) == saved_controller:
+                self.controller_combo.setCurrentIndex(index)
+                return
+
+    def handle_log_message(self, message: str):
+        if "heartbeat" in message.lower() and not self.heartbeat_checkbox.isChecked():
+            return
+        self.log(message)
+
+    def set_connection_button_state(self, connected: bool):
+        self.connection_button.setText("Disconnect" if connected else "Connect")
+        self.connection_button.setStyleSheet("QPushButton { font-weight: bold; }" if connected else "")
+
+    def on_toggle_connection(self):
+        if self.worker is None:
+            self.on_connect()
+        else:
+            self.on_disconnect()
+
+    def on_edit_mapping(self):
+        editor = MappingEditorWindow(
+            self,
+            mapping=self.gui_settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy()),
+            selected_device=self.controller_combo.currentText(),
+        )
+        editor.mapping_applied.connect(self._apply_mapping)
+        editor.show()
+        editor.raise_()
+
+    def _apply_mapping(self, mapping: dict):
+        self.gui_settings["action_mapping"] = resolve_action_mapping(mapping)
+        self.save_settings()
+
+    def refresh_controllers(self):
+        try:
+            import pygame as gui_pygame
+            gui_pygame.init()
+            gui_pygame.joystick.init()
+            names = [gui_pygame.joystick.Joystick(idx).get_name() for idx in range(gui_pygame.joystick.get_count())]
+            self.controller_combo.clear()
+            if names:
+                self.controller_combo.addItems(names)
+            else:
+                self.controller_combo.addItem("No controller found")
+        except Exception as exc:  # pragma: no cover - runtime behavior
+            self.controller_combo.clear()
+            self.controller_combo.addItem("Controller unavailable")
+            self.log(f"[gui] controller scan failed: {exc}")
+
+    def on_connect(self):
+        if self.worker is not None:
+            self.log("[gui] already connected")
+            return
+
+        device_name = self.controller_combo.currentText()
+        if device_name in {"No controller found", "Controller unavailable"}:
+            device_name = None
+
+        host = self.host_edit.text().strip() or "localhost"
+        port_text = self.port_edit.text().strip() or "50007"
+        try:
+            port = int(port_text)
+        except ValueError:
+            QMessageBox.critical(self, "Invalid port", "Port must be an integer.")
+            return
+
+        self.gui_settings = {
+            "controller": device_name or "",
+            "host": host,
+            "port": port,
+            "heartbeat": self.heartbeat_checkbox.isChecked(),
+            "action_mapping": resolve_action_mapping(self.gui_settings.get("action_mapping")),
+        }
+        save_gui_settings(self.gui_settings)
+
+        self.log(f"[gui] connecting to {host}:{port} using {device_name or 'auto'}")
+        self.worker = SenderWorker(host=host, port=port, device_name=device_name, action_map=self.gui_settings.get("action_mapping"))
+        self.worker.status_changed.connect(lambda text: self.log(f"[gui] status: {text}"))
+        self.worker.log_received.connect(self.handle_log_message)
+        self.worker.connection_changed.connect(lambda text: self.log(f"[gui] {text}"))
+
+        self.worker_thread = threading.Thread(target=self.worker.run, daemon=True)
+        self.worker_thread.start()
+        self.set_connection_button_state(True)
+
+    def on_disconnect(self):
+        if self.worker is None:
+            self.log("[gui] not connected")
+            return
+        self.worker.stop()
+        self.worker = None
+        self.save_settings()
+        self.set_connection_button_state(False)
+        self.log("[gui] disconnected")
+
+    def on_close(self):
+        self.save_settings()
+        self.close()
+
+    def closeEvent(self, event):
+        self.save_settings()
+        super().closeEvent(event)
+
+
+class MappingEditorWindow(QMainWindow):
+    mapping_applied = Signal(dict)
+
+    def __init__(self, parent=None, mapping: dict | None = None, selected_device: str | None = None):
+        super().__init__(parent)
+        self.setWindowTitle("INDIPAD Mapping Editor")
+        self.resize(760, 540)
+        self.selected_device = selected_device
+        config = load_axis_config()
+        self.mapping = get_default_action_mapping(selected_device, config)
+        if isinstance(mapping, dict):
+            self.mapping = resolve_action_mapping(mapping)
+
+        central = QWidget(self)
+        self.setCentralWidget(central)
+        layout = QVBoxLayout(central)
+
+        top_row = QHBoxLayout()
+        self.device_label = QLabel(f"Selected gamepad: {selected_device or 'auto'}")
+        top_row.addWidget(self.device_label)
+        top_row.addStretch()
+        self.reset_button = QPushButton("Reset to default")
+        self.reset_button.clicked.connect(self.reset_to_default)
+        top_row.addWidget(self.reset_button)
+        layout.addLayout(top_row)
+
+        self.form = QWidget()
+        self.form_layout = QFormLayout(self.form)
+        self.input_rows = {}
+
+        for label, key in get_gamepad_input_rows(self.selected_device):
+            box = QComboBox()
+            box.addItems(["Unassigned"] + AVAILABLE_ACTIONS[1:])
+            current_value = self.mapping.get(key, "")
+            match_index = 0
+            for index in range(box.count()):
+                if box.itemText(index) == current_value:
+                    match_index = index
+                    break
+            box.setCurrentIndex(match_index)
+            self.input_rows[key] = box
+            self.form_layout.addRow(label, box)
+
+        scroll = QWidget()
+        scroll_layout = QVBoxLayout(scroll)
+        scroll_layout.addWidget(self.form)
+        scroll_layout.addStretch()
+
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.addWidget(scroll)
+        layout.addWidget(container)
+
+        button_row = QHBoxLayout()
+        self.save_button = QPushButton("Save")
+        self.save_button.clicked.connect(self.apply_mapping)
+        self.close_button = QPushButton("Close")
+        self.close_button.clicked.connect(self.close)
+        button_row.addStretch()
+        button_row.addWidget(self.save_button)
+        button_row.addWidget(self.close_button)
+        layout.addLayout(button_row)
+
+    def reset_to_default(self):
+        self.mapping = get_default_action_mapping(self.selected_device, load_axis_config())
+        for key, combo in self.input_rows.items():
+            value = self.mapping.get(key, "")
+            if value and value in [item for item in AVAILABLE_ACTIONS if item]:
+                combo.setCurrentText(value)
+            else:
+                combo.setCurrentIndex(0)
+
+    def apply_mapping(self):
+        next_mapping = {}
+        for key, combo in self.input_rows.items():
+            value = combo.currentText().strip()
+            if value and value != "Unassigned":
+                next_mapping[key] = value
+        self.mapping = resolve_action_mapping(next_mapping)
+        self.mapping_applied.emit(self.mapping)
+        self.close()
+
+
+def run_gui():
+    if QObject is None or QApplication is None:
+        raise RuntimeError("PySide6 is required to run the GUI sender. Install it with: pip install pyside6")
+    app = QApplication([])
+    window = IndipadWindow()
+    window.show()
+    return app.exec()
+
+
 if __name__ == "__main__":
     try:
         args = sys.argv[1:]
+        if "--gui" in args or "-g" in args or not args:
+            raise SystemExit(run_gui())
+
         host = HOST
         port = PORT
         demo = False

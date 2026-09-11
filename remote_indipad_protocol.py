@@ -21,6 +21,17 @@ def build_payload(
     return payload
 
 
+def build_action_payload(action: str, pressed: bool, source: str = "dpad", device: str = "gamepad") -> Dict[str, Any]:
+    return {
+        "ts": time.time(),
+        "type": "action",
+        "device": device,
+        "action": action,
+        "pressed": bool(pressed),
+        "source": source,
+    }
+
+
 def build_heartbeat_payload() -> Dict[str, Any]:
     return {
         "ts": time.time(),
@@ -52,6 +63,22 @@ def validate_message(message: Dict[str, Any]) -> bool:
         if not isinstance(message["device"], str):
             return False
         if message["status"] != "alive":
+            return False
+        return True
+
+    if msg_type == "action":
+        required = {"ts", "type", "device", "action", "pressed", "source"}
+        if not required.issubset(message):
+            return False
+        if not isinstance(message["ts"], (int, float)):
+            return False
+        if not isinstance(message["device"], str):
+            return False
+        if not isinstance(message["action"], str):
+            return False
+        if not isinstance(message["pressed"], bool):
+            return False
+        if not isinstance(message["source"], str):
             return False
         return True
 
