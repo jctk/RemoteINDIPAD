@@ -21,8 +21,8 @@ def build_payload(
     return payload
 
 
-def build_action_payload(action: str, pressed: bool, source: str = "dpad", device: str = "gamepad") -> Dict[str, Any]:
-    return {
+def build_action_payload(action: str, pressed: bool, source: str = "dpad", device: str = "gamepad", step: int | None = None) -> Dict[str, Any]:
+    payload = {
         "ts": time.time(),
         "type": "action",
         "device": device,
@@ -30,6 +30,9 @@ def build_action_payload(action: str, pressed: bool, source: str = "dpad", devic
         "pressed": bool(pressed),
         "source": source,
     }
+    if step is not None:
+        payload["step"] = int(step)
+    return payload
 
 
 def build_heartbeat_payload() -> Dict[str, Any]:
@@ -79,6 +82,8 @@ def validate_message(message: Dict[str, Any]) -> bool:
         if not isinstance(message["pressed"], bool):
             return False
         if not isinstance(message["source"], str):
+            return False
+        if "step" in message and not isinstance(message["step"], int):
             return False
         return True
 

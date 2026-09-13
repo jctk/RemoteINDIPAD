@@ -94,6 +94,24 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn('"left_x":-0.25', rendered)
         self.assertIn('"button_1":false', rendered)
 
+    def test_gui_settings_round_trip_includes_focus_step(self):
+        settings = {
+            "controller": "JC-U3712T",
+            "host": "localhost",
+            "port": 50007,
+            "heartbeat": False,
+            "focus_step": 250,
+            "action_mapping": {"button_1": "FOCUS_STEP_UP"},
+        }
+        path = Path("test_sender_gui_settings.json")
+        try:
+            sender.save_gui_settings(settings, path)
+            loaded = sender.load_gui_settings(path)
+            self.assertEqual(loaded["focus_step"], 250)
+        finally:
+            if path.exists():
+                path.unlink()
+
     def test_debug_json_output_reserves_an_own_update_area(self):
         sender._DEBUG_JSON_CURSOR_SAVED = False
         sender._DEBUG_JSON_LAST_LINES = 0
@@ -271,6 +289,21 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(payload["pressed"])
         self.assertEqual(payload["source"], "dpad")
 
+    def test_focus_actions_include_current_step_and_step_buttons_stay_local(self):
+        focus_events = sender.build_action_events(
+            {},
+            {"button_1": True, "button_6": True},
+            {},
+            {},
+            action_map={"button_1": "FOCUS_STEP_UP", "button_6": "FOCUS_IN"},
+            focus_step=250,
+        )
+        self.assertNotIn({"action": "FOCUS_STEP_UP", "pressed": True, "source": "button"}, focus_events)
+        self.assertIn({"action": "FOCUS_IN", "pressed": True, "source": "button", "step": 250}, focus_events)
+
+        payload = protocol.build_action_payload(action="FOCUS_IN", pressed=True, source="button", step=250)
+        self.assertEqual(payload["step"], 250)
+
     def test_validate_message_accepts_action_payload(self):
         payload = {
             "ts": 1.0,
@@ -345,12 +378,12 @@ class ProtocolTests(unittest.TestCase):
             "FOCUS_OUT",
             "MOUNT_STOP",
             "FOCUS_STOP",
-            "FOCUS_STEP_UP",
-            "FOCUS_STEP_DOWN",
             "CAA_ROTATE_COUNTER_CLOCKWISE",
             "CAA_ROTATE_CLOCKWISE",
         }
         self.assertTrue(expected_actions.issubset({event["action"] for event in mapping}))
+        self.assertNotIn("FOCUS_STEP_UP", {event["action"] for event in mapping})
+        self.assertNotIn("FOCUS_STEP_DOWN", {event["action"] for event in mapping})
 
     def test_action_mapping_can_be_defined_in_gui_settings(self):
         settings = {
