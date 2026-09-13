@@ -221,6 +221,22 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(handler.drain(), ["[receiver] start", "[receiver] action"])
         self.assertEqual(handler.drain(), [])
 
+    def test_build_focus_gdbus_commands_uses_selected_driver_name(self):
+        commands = receiver.build_focus_gdbus_commands("GEMINI EAF GS150RC", "FOCUS_IN")
+        self.assertEqual(commands[0], [
+            "gdbus", "call", "--session", "--dest", "org.kde.kstars",
+            "--object-path", "/KStars/INDI", "--method",
+            "org.kde.kstars.INDI.setSwitch",
+            "GEMINI EAF GS150RC", "FOCUS_MOTION", "FOCUS_INWARD", "On",
+        ])
+        self.assertEqual(commands[1][:8], [
+            "gdbus", "call", "--session", "--dest", "org.kde.kstars",
+            "--object-path", "/KStars/INDI", "--method",
+        ])
+        self.assertEqual(commands[1][8], "org.kde.kstars.INDI.sendProperty")
+        self.assertEqual(commands[2][8], "org.kde.kstars.INDI.setNumber")
+        self.assertEqual(commands[3][8], "org.kde.kstars.INDI.sendProperty")
+
     def test_device_profile_selection_and_force_override(self):
         config = {
             "default_device": "ELECOM JC-U3712T",

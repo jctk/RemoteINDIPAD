@@ -3,6 +3,7 @@ import json
 import os
 import queue
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -155,6 +156,83 @@ class QueueLogHandler:
 
 def _debug_dispatch(label: str, action: str, pressed: bool, source: str) -> None:
     print(f"[receiver] dispatch: {label} action={action} pressed={pressed} source={source}", flush=True)
+
+
+ACTIVE_INDI_DEVICE_NAMES = {"mount": "", "focuser": "", "filter": "", "rotator": ""}
+
+
+def set_active_indi_device(device_type: str, name: str | None) -> None:
+    if device_type not in ACTIVE_INDI_DEVICE_NAMES:
+        return
+    ACTIVE_INDI_DEVICE_NAMES[device_type] = (name or "").strip()
+
+
+def get_active_indi_device(device_type: str) -> str:
+    return str(ACTIVE_INDI_DEVICE_NAMES.get(device_type, "") or "").strip()
+
+
+def build_focus_gdbus_commands(driver_name: str, direction: str) -> list[list[str]]:
+    driver_name = str(driver_name or "").strip()
+    if not driver_name:
+        raise ValueError("driver_name is required")
+
+    direction = str(direction).upper()
+    if direction == "FOCUS_IN":
+        motion = "FOCUS_INWARD"
+    elif direction == "FOCUS_OUT":
+        motion = "FOCUS_OUTWARD"
+    else:
+        raise ValueError(f"unsupported focus direction: {direction}")
+
+    return [
+        [
+            "gdbus", "call", "--session", "--dest", "org.kde.kstars",
+            "--object-path", "/KStars/INDI", "--method",
+            "org.kde.kstars.INDI.setSwitch",
+            driver_name, "FOCUS_MOTION", motion, "On",
+        ],
+        [
+            "gdbus", "call", "--session", "--dest", "org.kde.kstars",
+            "--object-path", "/KStars/INDI", "--method",
+            "org.kde.kstars.INDI.sendProperty",
+            driver_name, "FOCUS_MOTION",
+        ],
+        [
+            "gdbus", "call", "--session", "--dest", "org.kde.kstars",
+            "--object-path", "/KStars/INDI", "--method",
+            "org.kde.kstars.INDI.setNumber",
+            driver_name, "REL_FOCUS_POSITION", "FOCUS_RELATIVE_POSITION", "100",
+        ],
+        [
+            "gdbus", "call", "--session", "--dest", "org.kde.kstars",
+            "--object-path", "/KStars/INDI", "--method",
+            "org.kde.kstars.INDI.sendProperty",
+            driver_name, "REL_FOCUS_POSITION",
+        ],
+    ]
+
+
+def execute_focus_action(direction: str, driver_name: str | None = None) -> None:
+    direction = str(direction).upper()
+    target_name = (driver_name or get_active_indi_device("focuser") or "").strip()
+    if not target_name:
+        print(f"[receiver] no focuser selected; cannot execute {direction}", flush=True)
+        return
+
+    commands = build_focus_gdbus_commands(target_name, direction)
+    for command in commands:
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, check=False)
+            if result.returncode != 0:
+                print(f"[receiver] {direction} command failed: {' '.join(command)}", flush=True)
+                if result.stderr:
+                    print(f"[receiver] {result.stderr.strip()}", flush=True)
+                return
+        except Exception as exc:
+            print(f"[receiver] {direction} command error: {exc}", flush=True)
+            return
+
+    print(f"[receiver] executed {direction} on {target_name}", flush=True)
 
 
 def load_gui_settings(path: str | Path | None = None):
@@ -374,6 +452,7 @@ class ReceiverWindow(QMainWindow):
         self.scan_button.clicked.connect(self.on_scan_indi)
         self.restart_button.clicked.connect(self.on_restart)
         self.close_button.clicked.connect(self.on_close)
+        QTimer.singleShot(0, self.on_scan_indi)
         self.log("Ready")
 
     def _append_log(self, message: str):
@@ -407,7 +486,21 @@ class ReceiverWindow(QMainWindow):
             else:
                 combo.setCurrentIndex(0)
 
+    def _sync_active_indi_devices(self):
+        for combo, kind in (
+            (self.mount_combo, "mount"),
+            (self.focuser_combo, "focuser"),
+            (self.filter_combo, "filter"),
+            (self.rotator_combo, "rotator"),
+        ):
+            text = combo.currentText().strip()
+            if text in {"", "Not scanned"}:
+                set_active_indi_device(kind, "")
+            else:
+                set_active_indi_device(kind, text)
+
     def save_settings(self):
+        self._sync_active_indi_devices()
         settings = {
             "mount": self.mount_combo.currentText() if self.mount_combo.count() else "",
             "focuser": self.focuser_combo.currentText() if self.focuser_combo.count() else "",
@@ -484,6 +577,8 @@ class ReceiverWindow(QMainWindow):
             self.focuser_combo.setCurrentIndex(0 if not result.get("focuser") else 1)
             self.filter_combo.setCurrentIndex(0 if not result.get("filter") else 1)
             self.rotator_combo.setCurrentIndex(0 if not result.get("rotator") else 1)
+
+            self._sync_active_indi_devices()
 
             if result.get("mount") or result.get("focuser") or result.get("filter") or result.get("rotator"):
                 self.log("[gui] INDI scan complete")
@@ -564,10 +659,14 @@ def handle_mount_stop(pressed: bool, source: str = "dpad") -> None:
 
 def handle_focus_in(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("FOCUS_IN", "FOCUS_IN", pressed, source)
+    if pressed:
+        execute_focus_action("FOCUS_IN")
 
 
 def handle_focus_out(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("FOCUS_OUT", "FOCUS_OUT", pressed, source)
+    if pressed:
+        execute_focus_action("FOCUS_OUT")
 
 
 def handle_focus_step_up(pressed: bool, source: str = "button") -> None:
