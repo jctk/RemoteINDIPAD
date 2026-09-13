@@ -235,8 +235,8 @@ $ source venv/bin/activate
 | マウント | MOUNT_STEP_UP | マウント移動ステップUP | ボタン5（L上） |
 | マウント | MOUNT_STEP_DOWN | マウント移動ステップDOWN | ボタン7（L下） |
 | マウント | MOUNT_STOP | マウント移動停止（Slew停止） | ボタン9 または DPADのボタンアップ時 |
-| フォーカサー | FOCUS_IN | フォーカスIn | ボタン6（R上） |
-| フォーカサー | FOCUS_OUT | フォーカスOut | ボタン8（R下） |
+| フォーカサー | FOCUS_OUT | フォーカスOut | ボタン6（R上） |
+| フォーカサー | FOCUS_IN | フォーカスIn | ボタン8（R下） |
 | フォーカサー | FOCUS_STEP_UP | フォーカスステップUP（5→10→50→100→500） | ボタン2 |
 | フォーカサー | FOCUS_STEP_DOWN | フォーカスステップDOWN（5←10←50←100←500） | ボタン1 |
 | フォーカサー | FOCUS_STOP | フォーカシング停止 | ボタン10 |
