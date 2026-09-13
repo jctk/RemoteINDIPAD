@@ -171,7 +171,7 @@ def get_active_indi_device(device_type: str) -> str:
     return str(ACTIVE_INDI_DEVICE_NAMES.get(device_type, "") or "").strip()
 
 
-def build_focus_gdbus_commands(driver_name: str, direction: str) -> list[list[str]]:
+def build_focus_gdbus_commands(driver_name: str, direction: str, step: int | None = None) -> list[list[str]]:
     driver_name = str(driver_name or "").strip()
     if not driver_name:
         raise ValueError("driver_name is required")
@@ -183,6 +183,13 @@ def build_focus_gdbus_commands(driver_name: str, direction: str) -> list[list[st
         motion = "FOCUS_OUTWARD"
     else:
         raise ValueError(f"unsupported focus direction: {direction}")
+
+    step_value = 100
+    if step is not None:
+        try:
+            step_value = max(1, int(step))
+        except (TypeError, ValueError):
+            step_value = 100
 
     return [
         [
@@ -201,7 +208,7 @@ def build_focus_gdbus_commands(driver_name: str, direction: str) -> list[list[st
             "gdbus", "call", "--session", "--dest", "org.kde.kstars",
             "--object-path", "/KStars/INDI", "--method",
             "org.kde.kstars.INDI.setNumber",
-            driver_name, "REL_FOCUS_POSITION", "FOCUS_RELATIVE_POSITION", "100",
+            driver_name, "REL_FOCUS_POSITION", "FOCUS_RELATIVE_POSITION", str(step_value),
         ],
         [
             "gdbus", "call", "--session", "--dest", "org.kde.kstars",
@@ -212,14 +219,14 @@ def build_focus_gdbus_commands(driver_name: str, direction: str) -> list[list[st
     ]
 
 
-def execute_focus_action(direction: str, driver_name: str | None = None) -> None:
+def execute_focus_action(direction: str, driver_name: str | None = None, step: int | None = None) -> None:
     direction = str(direction).upper()
     target_name = (driver_name or get_active_indi_device("focuser") or "").strip()
     if not target_name:
         print(f"[receiver] no focuser selected; cannot execute {direction}", flush=True)
         return
 
-    commands = build_focus_gdbus_commands(target_name, direction)
+    commands = build_focus_gdbus_commands(target_name, direction, step=step)
     for command in commands:
         try:
             result = subprocess.run(command, capture_output=True, text=True, check=False)
@@ -657,16 +664,16 @@ def handle_mount_stop(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_STOP", "MOUNT_STOP", pressed, source)
 
 
-def handle_focus_in(pressed: bool, source: str = "button") -> None:
+def handle_focus_in(pressed: bool, source: str = "button", step: int | None = None) -> None:
     _debug_dispatch("FOCUS_IN", "FOCUS_IN", pressed, source)
     if pressed:
-        execute_focus_action("FOCUS_IN")
+        execute_focus_action("FOCUS_IN", step=step)
 
 
-def handle_focus_out(pressed: bool, source: str = "button") -> None:
+def handle_focus_out(pressed: bool, source: str = "button", step: int | None = None) -> None:
     _debug_dispatch("FOCUS_OUT", "FOCUS_OUT", pressed, source)
     if pressed:
-        execute_focus_action("FOCUS_OUT")
+        execute_focus_action("FOCUS_OUT", step=step)
 
 
 def handle_focus_step_up(pressed: bool, source: str = "button") -> None:
@@ -722,10 +729,13 @@ _DISPATCH_TABLE = {
 }
 
 
-def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown") -> None:
+def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown", step: int | None = None) -> None:
     handler = _DISPATCH_TABLE.get(action)
     if handler is None:
         print(f"[receiver] unknown action: {action} pressed={pressed} source={source}", flush=True)
+        return
+    if action in {"FOCUS_IN", "FOCUS_OUT"}:
+        handler(bool(pressed), str(source), step=step)
         return
     handler(bool(pressed), str(source))
 
@@ -839,8 +849,13 @@ class Receiver:
                                     action = obj.get("action")
                                     pressed = bool(obj.get("pressed", False))
                                     source = obj.get("source", "unknown")
-                                    self._emit_log(f"[receiver] action: {action} pressed={pressed} source={source}")
-                                    dispatch_abstract_action(action, pressed, source)
+                                    step = obj.get("step")
+                                    try:
+                                        step_value = int(step) if step is not None else None
+                                    except (TypeError, ValueError):
+                                        step_value = None
+                                    self._emit_log(f"[receiver] action: {action} pressed={pressed} source={source} step={step_value}")
+                                    dispatch_abstract_action(action, pressed, source, step=step_value)
                                 else:
                                     extract_dpad_state(obj)
                                 last_seen = time.monotonic()

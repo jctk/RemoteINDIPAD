@@ -255,6 +255,11 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(commands[2][8], "org.kde.kstars.INDI.setNumber")
         self.assertEqual(commands[3][8], "org.kde.kstars.INDI.sendProperty")
 
+    def test_focus_step_uses_step_from_protocol(self):
+        commands = receiver.build_focus_gdbus_commands("GEMINI EAF GS150RC", "FOCUS_IN", step=250)
+        self.assertIn("250", commands[2])
+        self.assertEqual(commands[2][-1], "250")
+
     def test_device_profile_selection_and_force_override(self):
         config = {
             "default_device": "ELECOM JC-U3712T",
