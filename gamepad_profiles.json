@@ -23,6 +23,8 @@
         "button_8": "FOCUS_OUT",
         "button_9": "MOUNT_STOP",
         "button_10": "FOCUS_STOP",
+        "button_11": "",
+        "button_12": "",
         "left_x": "SKYMAP_MOVE",
         "left_y": "SKYMAP_MOVE",
         "right_x": "SKYMAP_ROTATE",
@@ -51,18 +53,20 @@
         "button_8": "FOCUS_OUT",
         "button_9": "MOUNT_STOP",
         "button_10": "FOCUS_STOP",
+        "button_11": "",
+        "button_12": "",
         "left_x": "SKYMAP_MOVE",
         "left_y": "SKYMAP_MOVE",
         "right_x": "SKYMAP_ROTATE",
         "right_y": "SKYMAP_ZOOM"
       }
     },
-    "DualSense Wireless Controller": {
+    "Bluetooth Wireless Controller": {
       "stick_axes": {
         "left_x": 0,
         "left_y": 1,
-        "right_x": 3,
-        "right_y": 5
+        "right_x": 2,
+        "right_y": 3
       },
       "action_mapping": {
         "dpad_up": "MOUNT_SOUTH",
@@ -71,18 +75,20 @@
         "dpad_right": "MOUNT_EAST",
         "button_1": "FOCUS_STEP_UP",
         "button_2": "FOCUS_STEP_DOWN",
-        "button_3": "CAA_ROTATE_COUNTER_CLOCKWISE",
-        "button_4": "CAA_ROTATE_CLOCKWISE",
-        "button_5": "MOUNT_STEP_UP",
-        "button_6": "FOCUS_IN",
-        "button_7": "MOUNT_STEP_DOWN",
-        "button_8": "FOCUS_OUT",
-        "button_9": "MOUNT_STOP",
-        "button_10": "FOCUS_STOP",
-        "left_x": "SKYMAP_MOVE",
-        "left_y": "SKYMAP_MOVE",
-        "right_x": "SKYMAP_ROTATE",
-        "right_y": "SKYMAP_ZOOM"
+        "button_3": "",
+        "button_4": "FOCUS_OUT",
+        "button_5": "FOCUS_IN",
+        "button_6": "",
+        "button_7": "CAA_ROTATE_COUNTER_CLOCKWISE",
+        "button_8": "CAA_ROTATE_CLOCKWISE",
+        "button_9": "",
+        "button_10": "",
+        "button_11": "MOUNT_STEP_UP",
+        "button_12": "MOUNT_STEP_DOWN",
+        "left_x": "",
+        "left_y": "",
+        "right_x": "",
+        "right_y": ""
       }
     },
     "default": {

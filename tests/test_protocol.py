@@ -213,6 +213,14 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(summary["pressed"], ["dpad_right"])
         self.assertEqual(summary["all"], ["dpad_up", "dpad_right"])
 
+    def test_queue_log_handler_buffers_messages_thread_safely(self):
+        handler = receiver.QueueLogHandler()
+        handler.emit("[receiver] start")
+        handler.emit("[receiver] action")
+
+        self.assertEqual(handler.drain(), ["[receiver] start", "[receiver] action"])
+        self.assertEqual(handler.drain(), [])
+
     def test_device_profile_selection_and_force_override(self):
         config = {
             "default_device": "ELECOM JC-U3712T",
@@ -257,6 +265,18 @@ class ProtocolTests(unittest.TestCase):
             "source": "dpad",
         }
         self.assertTrue(protocol.validate_message(payload))
+
+    def test_receiver_gui_settings_have_expected_defaults(self):
+        defaults = receiver.load_gui_settings(path=Path("/tmp/does-not-exist.json"))
+        self.assertIn("mount", defaults)
+        self.assertIn("focuser", defaults)
+        self.assertIn("rotator", defaults)
+        self.assertIn("host", defaults)
+        self.assertIn("port", defaults)
+        self.assertIn("heartbeat", defaults)
+        self.assertEqual(defaults["host"], "0.0.0.0")
+        self.assertEqual(defaults["port"], 50007)
+        self.assertFalse(defaults["heartbeat"])
 
     def test_dpad_to_abstract_action_mapping(self):
         mapping = sender.build_action_events({"dpad_up": False, "dpad_left": False, "dpad_right": False, "dpad_down": True}, {})

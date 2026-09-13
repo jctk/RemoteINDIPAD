@@ -1,0 +1,9 @@
+{
+  "mount": "Telescope Simulator",
+  "focuser": "Focuser Simulator",
+  "filter": "CCD Simulator",
+  "rotator": "Rotator Simulator",
+  "host": "0.0.0.0",
+  "port": 50007,
+  "heartbeat": false
+}
