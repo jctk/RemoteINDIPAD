@@ -171,7 +171,25 @@ def get_active_indi_device(device_type: str) -> str:
     return str(ACTIVE_INDI_DEVICE_NAMES.get(device_type, "") or "").strip()
 
 
-async def _call_indi_method(method_name: str, *args):
+_INDI_METHOD_NAMES = {
+    "getText": "call_get_text",
+    "getNumber": "call_get_number",
+    "getPropertyState": "call_get_property_state",
+    "setSwitch": "call_set_switch",
+    "sendProperty": "call_send_property",
+    "setNumber": "call_set_number",
+}
+
+
+def _check_indi_call_result(method_name: str, args: tuple, result) -> None:
+    """KStars INDI D-Bus methods return a bool success flag; surface a clear error when it is False."""
+    value = _dbus_value(result)
+    if isinstance(value, bool) and not value:
+        raise RuntimeError(f"KStars rejected {method_name}{args} (returned False; check property/argument types)")
+
+
+async def _run_indi_calls(calls: list[tuple[str, tuple]]):
+    """Execute a sequence of INDI D-Bus calls over a single connection."""
     if MessageBus is None or BusType is None:
         raise RuntimeError("dbus-next is required for INDI operations")
 
@@ -181,16 +199,23 @@ async def _call_indi_method(method_name: str, *args):
         introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
         proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
         interface = proxy.get_interface("org.kde.kstars.INDI")
-        method_names = {
-            "getText": "call_get_text",
-            "setSwitch": "call_set_switch",
-            "sendProperty": "call_send_property",
-            "setNumber": "call_set_number",
-        }
-        method = getattr(interface, method_names[method_name])
-        return await method(*args)
+        results = []
+        for method_name, args in calls:
+            method = getattr(interface, _INDI_METHOD_NAMES[method_name])
+            try:
+                result = await method(*args)
+            except Exception as exc:
+                raise RuntimeError(f"D-Bus call {method_name}{args} failed: {exc}") from exc
+            _check_indi_call_result(method_name, args, result)
+            results.append(result)
+        return results
     finally:
         bus.disconnect()
+
+
+async def _call_indi_method(method_name: str, *args):
+    results = await _run_indi_calls([(method_name, args)])
+    return results[0]
 
 
 async def _get_filter_slot_count(driver_name: str) -> int:
@@ -252,7 +277,7 @@ def build_focus_dbus_calls(driver_name: str, direction: str, step: int | None = 
     return [
         ("setSwitch", (driver_name, "FOCUS_MOTION", motion, "On")),
         ("sendProperty", (driver_name, "FOCUS_MOTION")),
-        ("setNumber", (driver_name, "REL_FOCUS_POSITION", "FOCUS_RELATIVE_POSITION", str(step_value))),
+        ("setNumber", (driver_name, "REL_FOCUS_POSITION", "FOCUS_RELATIVE_POSITION", float(step_value))),
         ("sendProperty", (driver_name, "REL_FOCUS_POSITION")),
     ]
 
@@ -265,14 +290,140 @@ def execute_focus_action(direction: str, driver_name: str | None = None, step: i
         return
 
     calls = build_focus_dbus_calls(target_name, direction, step=step)
-    for method_name, args in calls:
-        try:
-            asyncio.run(_call_indi_method(method_name, *args))
-        except Exception as exc:
-            print(f"[receiver] {direction} D-Bus call error: {exc}", flush=True)
-            return
+    try:
+        asyncio.run(_run_indi_calls(calls))
+    except Exception as exc:
+        print(f"[receiver] {direction} D-Bus call error: {exc}", flush=True)
+        return
 
     print(f"[receiver] executed {direction} on {target_name}", flush=True)
+
+
+async def _execute_filterwheel_action_async(driver_name: str, direction: str):
+    """Read the slot count/current slot and apply the move over one bus connection."""
+    if MessageBus is None or BusType is None:
+        raise RuntimeError("dbus-next is required for INDI operations")
+
+    bus = MessageBus(bus_type=BusType.SESSION)
+    await bus.connect()
+    try:
+        introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
+        proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
+        interface = proxy.get_interface("org.kde.kstars.INDI")
+
+        slot_count = 0
+        for slot_index in range(1, 11):
+            try:
+                result = await interface.call_get_text(driver_name, "FILTER_NAME", f"FILTER_SLOT_NAME_{slot_index}")
+            except Exception as exc:
+                if slot_index == 1:
+                    print(f"[receiver] D-Bus call error: getText(FILTER_NAME, FILTER_SLOT_NAME_1) -> {exc}", flush=True)
+                break
+
+            result = _dbus_value(result)
+            if not result:
+                continue
+
+            if isinstance(result, (tuple, list)):
+                if not result:
+                    break
+                value = str(_dbus_value(result[0])).strip()
+            else:
+                value = str(result).strip()
+
+            if value.lower() == "invalid":
+                break
+            slot_count = slot_index
+
+        if slot_count <= 0:
+            return None, None, 0, False
+
+        try:
+            current_result = await interface.call_get_number(driver_name, "FILTER_SLOT", "FILTER_SLOT_VALUE")
+        except Exception as exc:
+            print(f"[receiver] D-Bus call error: getNumber(FILTER_SLOT, FILTER_SLOT_VALUE) -> {exc}", flush=True)
+            return None, None, slot_count, False
+
+        current_result = _dbus_value(current_result)
+        if isinstance(current_result, (tuple, list)):
+            if not current_result:
+                return None, None, slot_count, False
+            current_result = _dbus_value(current_result[0])
+
+        try:
+            current_slot = int(float(current_result))
+        except (TypeError, ValueError):
+            return None, None, slot_count, False
+
+        try:
+            state_result = await interface.call_get_property_state(driver_name, "FILTER_SLOT")
+        except Exception as exc:
+            print(f"[receiver] D-Bus call error: getPropertyState(FILTER_SLOT) -> {exc}", flush=True)
+            return current_slot, current_slot, slot_count, False
+
+        state_value = _dbus_value(state_result)
+        if isinstance(state_value, (tuple, list)):
+            state_value = _dbus_value(state_value[0]) if state_value else ""
+        if str(state_value).strip().lower() == "busy":
+            return current_slot, current_slot, slot_count, True
+
+        if direction == "FILTERWHEEL_PREV":
+            target_slot = max(1, current_slot - 1)
+        elif direction == "FILTERWHEEL_NEXT":
+            target_slot = min(slot_count, current_slot + 1)
+        else:
+            raise ValueError(f"unsupported filterwheel direction: {direction}")
+
+        if target_slot != current_slot:
+            set_args = (driver_name, "FILTER_SLOT", "FILTER_SLOT_VALUE", float(target_slot))
+            try:
+                set_result = await interface.call_set_number(*set_args)
+            except Exception as exc:
+                raise RuntimeError(f"D-Bus call setNumber{set_args} failed: {exc}") from exc
+            _check_indi_call_result("setNumber", set_args, set_result)
+
+            send_args = (driver_name, "FILTER_SLOT")
+            try:
+                send_result = await interface.call_send_property(*send_args)
+            except Exception as exc:
+                raise RuntimeError(f"D-Bus call sendProperty{send_args} failed: {exc}") from exc
+            _check_indi_call_result("sendProperty", send_args, send_result)
+
+        return current_slot, target_slot, slot_count, False
+    finally:
+        bus.disconnect()
+
+
+def execute_filterwheel_action(direction: str, driver_name: str | None = None) -> None:
+    direction = str(direction).upper()
+    target_name = (driver_name or get_active_indi_device("filter") or "").strip()
+    if not target_name:
+        print(f"[receiver] no filter wheel selected; cannot execute {direction}", flush=True)
+        return
+
+    try:
+        current_slot, target_slot, slot_count, busy = asyncio.run(_execute_filterwheel_action_async(target_name, direction))
+    except Exception as exc:
+        print(f"[receiver] {direction} D-Bus call error: {exc}", flush=True)
+        return
+
+    if slot_count <= 0:
+        print(f"[receiver] unable to determine filter slot count for {target_name}", flush=True)
+        return
+
+    if current_slot is None:
+        print(f"[receiver] unable to read current filter slot for {target_name}", flush=True)
+        return
+
+    if busy:
+        print(f"[receiver] {direction} ignored; {target_name} FILTER_SLOT is Busy", flush=True)
+        return
+
+    if target_slot == current_slot:
+        print(f"[receiver] {direction} ignored; slot {current_slot} already at limit", flush=True)
+        return
+
+    print(f"[receiver] executed {direction} on {target_name}: slot {current_slot} -> {target_slot}", flush=True)
 
 
 def load_gui_settings(path: str | Path | None = None):
@@ -513,7 +664,10 @@ class ReceiverWindow(QMainWindow):
         main_layout.addWidget(self.console)
 
         self.restore_saved_values()
+        self.mount_combo.currentIndexChanged.connect(self._sync_active_indi_devices)
+        self.focuser_combo.currentIndexChanged.connect(self._sync_active_indi_devices)
         self.filter_combo.currentIndexChanged.connect(self._refresh_filter_slot_count)
+        self.rotator_combo.currentIndexChanged.connect(self._sync_active_indi_devices)
         self.heartbeat_checkbox.toggled.connect(self.on_heartbeat_toggled)
         self.start_receiver()
         self.scan_button.clicked.connect(self.on_scan_indi)
@@ -537,6 +691,7 @@ class ReceiverWindow(QMainWindow):
         self.log_queue.emit(str(message))
 
     def _refresh_filter_slot_count(self):
+        self._sync_active_indi_devices()
         driver_name = self.filter_combo.currentText().strip()
         if not driver_name or driver_name in {"Not scanned"}:
             self.filter_slots_edit.setText("")
@@ -770,6 +925,18 @@ def handle_focus_stop(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("FOCUS_STOP", "FOCUS_STOP", pressed, source)
 
 
+def handle_filterwheel_prev(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("FILTERWHEEL_PREV", "FILTERWHEEL_PREV", pressed, source)
+    if pressed:
+        execute_filterwheel_action("FILTERWHEEL_PREV")
+
+
+def handle_filterwheel_next(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("FILTERWHEEL_NEXT", "FILTERWHEEL_NEXT", pressed, source)
+    if pressed:
+        execute_filterwheel_action("FILTERWHEEL_NEXT")
+
+
 def handle_caa_rotate_counter_clockwise(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("CAA_ROTATE_COUNTER_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE", pressed, source)
 
@@ -803,6 +970,8 @@ _DISPATCH_TABLE = {
     "FOCUS_STEP_UP": handle_focus_step_up,
     "FOCUS_STEP_DOWN": handle_focus_step_down,
     "FOCUS_STOP": handle_focus_stop,
+    "FILTERWHEEL_PREV": handle_filterwheel_prev,
+    "FILTERWHEEL_NEXT": handle_filterwheel_next,
     "CAA_ROTATE_COUNTER_CLOCKWISE": handle_caa_rotate_counter_clockwise,
     "CAA_ROTATE_CLOCKWISE": handle_caa_rotate_clockwise,
     "SKYMAP_MOVE": handle_skymap_move,
