@@ -133,6 +133,32 @@ class ProtocolTests(unittest.TestCase):
 
         self.assertEqual(sender.get_gamepad_name(FakeJoy()), "DualSense Wireless Controller")
 
+    def test_filter_slot_count_stops_at_first_invalid_slot(self):
+        responses = [
+            "('R',)",
+            "('G',)",
+            "('Invalid',)",
+            "('Invalid',)",
+            "('Invalid',)",
+            "('Invalid',)",
+            "('Invalid',)",
+            "('Invalid',)",
+            "('Invalid',)",
+            "('Invalid',)",
+        ]
+
+        def wrapped_run(command, capture_output, text, check):
+            index = wrapped_run.calls
+            wrapped_run.calls += 1
+            if index >= len(responses):
+                index = len(responses) - 1
+            return type("Result", (), {"returncode": 0, "stdout": responses[index], "stderr": ""})()
+
+        wrapped_run.calls = 0
+
+        with patch("remote_indipad_receiver.subprocess.run", side_effect=wrapped_run):
+            self.assertEqual(receiver.get_filter_slot_count("Filter Simulator"), 2)
+
     def test_clear_console_emits_screen_clear_sequence(self):
         stream = io.StringIO()
         with redirect_stdout(stream):

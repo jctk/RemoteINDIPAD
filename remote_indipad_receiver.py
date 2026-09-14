@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import json
 import os
@@ -16,7 +17,7 @@ except ImportError:  # pragma: no cover - fallback for missing ctypes
     ctypes = None
 
 try:
-    from PySide6.QtCore import QObject, QTimer
+    from PySide6.QtCore import QObject, Qt, QTimer
     from PySide6.QtGui import QFont
     from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QSizePolicy, QTextEdit, QVBoxLayout, QWidget
 except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is used
@@ -37,6 +38,7 @@ DEFAULT_GUI_SETTINGS = {
     "mount": "",
     "focuser": "",
     "filter": "",
+    "filter_slots": 0,
     "rotator": "",
     "host": "0.0.0.0",
     "port": 50007,
@@ -171,6 +173,48 @@ def get_active_indi_device(device_type: str) -> str:
     return str(ACTIVE_INDI_DEVICE_NAMES.get(device_type, "") or "").strip()
 
 
+def get_filter_slot_count(driver_name: str) -> int:
+    driver_name = str(driver_name or "").strip()
+    if not driver_name:
+        return 0
+
+    slot_count = 0
+    for slot_index in range(1, 11):
+        command = [
+            "gdbus", "call", "--session",
+            "--dest", "org.kde.kstars",
+            "--object-path", "/KStars/INDI",
+            "--method", "org.kde.kstars.INDI.getText",
+            driver_name, "FILTER_NAME", f"FILTER_SLOT_NAME_{slot_index}",
+        ]
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, check=False)
+        except Exception:
+            break
+
+        output = (result.stdout or result.stderr or "").strip()
+        if not output:
+            continue
+        try:
+            parsed = ast.literal_eval(output)
+        except (ValueError, SyntaxError):
+            parsed = output
+
+        if isinstance(parsed, (tuple, list)):
+            values = parsed
+            if not values:
+                break
+            value = str(values[0]).strip()
+        else:
+            value = str(parsed).strip()
+
+        if value.lower() == "invalid":
+            break
+        slot_count = slot_index
+
+    return slot_count
+
+
 def build_focus_gdbus_commands(driver_name: str, direction: str, step: int | None = None) -> list[list[str]]:
     driver_name = str(driver_name or "").strip()
     if not driver_name:
@@ -264,10 +308,17 @@ def load_gui_settings(path: str | Path | None = None):
     except (TypeError, ValueError):
         port_value = 50007
 
+    filter_slots = loaded.get("filter_slots", 0)
+    try:
+        filter_slots = max(0, int(filter_slots))
+    except (TypeError, ValueError):
+        filter_slots = 0
+
     return {
         "mount": str(loaded.get("mount", "") or ""),
         "focuser": str(loaded.get("focuser", "") or ""),
         "filter": str(loaded.get("filter", "") or ""),
+        "filter_slots": filter_slots,
         "rotator": str(loaded.get("rotator", "") or ""),
         "host": str(loaded.get("host", "0.0.0.0") or "0.0.0.0"),
         "port": port_value,
@@ -283,10 +334,17 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
     except (TypeError, ValueError):
         port_value = 50007
 
+    filter_slots = settings.get("filter_slots", 0)
+    try:
+        filter_slots = max(0, int(filter_slots))
+    except (TypeError, ValueError):
+        filter_slots = 0
+
     payload = {
         "mount": str(settings.get("mount", "") or ""),
         "focuser": str(settings.get("focuser", "") or ""),
         "filter": str(settings.get("filter", "") or ""),
+        "filter_slots": filter_slots,
         "rotator": str(settings.get("rotator", "") or ""),
         "host": str(settings.get("host", "0.0.0.0") or "0.0.0.0"),
         "port": port_value,
@@ -416,7 +474,13 @@ class ReceiverWindow(QMainWindow):
         self.focuser_combo = QComboBox()
         self.focuser_combo.addItems(["Not scanned", "Focuser 1", "Focuser 2"])
         self.filter_combo = QComboBox()
+        self.filter_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.filter_combo.addItems(["Not scanned", "Filter Wheel 1", "Filter Wheel 2"])
+        self.filter_slots_edit = QLineEdit()
+        self.filter_slots_edit.setReadOnly(True)
+        self.filter_slots_edit.setAlignment(Qt.AlignRight)
+        self.filter_slots_edit.setFixedWidth(64)
+        self.filter_slots_edit.setPlaceholderText("0")
         self.rotator_combo = QComboBox()
         self.rotator_combo.addItems(["Not scanned", "Rotator 1", "Rotator 2"])
         self.host_edit = QLineEdit(str(self.gui_settings.get("host", "0.0.0.0")))
@@ -425,9 +489,15 @@ class ReceiverWindow(QMainWindow):
         self.heartbeat_checkbox = QCheckBox("Heartbeat log")
         self.heartbeat_checkbox.setChecked(bool(self.gui_settings.get("heartbeat", False)))
 
+        filter_row = QHBoxLayout()
+        filter_row.setContentsMargins(0, 0, 0, 0)
+        filter_row.addWidget(self.filter_combo, 1)
+        filter_row.addSpacing(0)
+        filter_row.addWidget(self.filter_slots_edit)
+
         form_layout.addRow("Mount", self.mount_combo)
         form_layout.addRow("Focuser", self.focuser_combo)
-        form_layout.addRow("Filter Wheel", self.filter_combo)
+        form_layout.addRow("Filter Wheel", filter_row)
         form_layout.addRow("Rotator", self.rotator_combo)
         host_port_row = QHBoxLayout()
         host_port_row.addWidget(self.host_edit)
@@ -454,6 +524,7 @@ class ReceiverWindow(QMainWindow):
         main_layout.addWidget(self.console)
 
         self.restore_saved_values()
+        self.filter_combo.currentIndexChanged.connect(self._refresh_filter_slot_count)
         self.heartbeat_checkbox.toggled.connect(self.on_heartbeat_toggled)
         self.start_receiver()
         self.scan_button.clicked.connect(self.on_scan_indi)
@@ -476,6 +547,22 @@ class ReceiverWindow(QMainWindow):
             return
         self.log_queue.emit(str(message))
 
+    def _refresh_filter_slot_count(self):
+        driver_name = self.filter_combo.currentText().strip()
+        if not driver_name or driver_name in {"Not scanned"}:
+            self.filter_slots_edit.setText("")
+            return
+
+        try:
+            slot_count = get_filter_slot_count(driver_name)
+        except Exception as exc:
+            self.log(f"[gui] failed to get filter slot count for {driver_name}: {exc}")
+            self.filter_slots_edit.setText("")
+            return
+
+        self.filter_slots_edit.setText(str(slot_count))
+        self.gui_settings["filter_slots"] = slot_count
+
     def restore_saved_values(self):
         for combo, saved_value, options in (
             (self.mount_combo, self.gui_settings.get("mount", ""), ["Not scanned", "Mount 1", "Mount 2"]),
@@ -492,6 +579,10 @@ class ReceiverWindow(QMainWindow):
                     break
             else:
                 combo.setCurrentIndex(0)
+
+        slot_count = int(self.gui_settings.get("filter_slots", 0) or 0)
+        self.filter_slots_edit.setText(str(slot_count) if slot_count > 0 else "")
+        self._refresh_filter_slot_count()
 
     def _sync_active_indi_devices(self):
         for combo, kind in (
@@ -512,6 +603,7 @@ class ReceiverWindow(QMainWindow):
             "mount": self.mount_combo.currentText() if self.mount_combo.count() else "",
             "focuser": self.focuser_combo.currentText() if self.focuser_combo.count() else "",
             "filter": self.filter_combo.currentText() if self.filter_combo.count() else "",
+            "filter_slots": self.filter_slots_edit.text().strip() or 0,
             "rotator": self.rotator_combo.currentText() if self.rotator_combo.count() else "",
             "host": self.host_edit.text().strip() or "0.0.0.0",
             "port": self.port_edit.text().strip() or "50007",
@@ -586,6 +678,7 @@ class ReceiverWindow(QMainWindow):
             self.rotator_combo.setCurrentIndex(0 if not result.get("rotator") else 1)
 
             self._sync_active_indi_devices()
+            self._refresh_filter_slot_count()
 
             if result.get("mount") or result.get("focuser") or result.get("filter") or result.get("rotator"):
                 self.log("[gui] INDI scan complete")
