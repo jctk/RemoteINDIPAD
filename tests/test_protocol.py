@@ -94,6 +94,12 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn('"left_x":-0.25', rendered)
         self.assertIn('"button_1":false', rendered)
 
+    def test_default_sender_mapping_includes_filterwheel_actions(self):
+        self.assertEqual(sender.DEFAULT_ACTION_MAPPING.get("button_11"), "FILTERWHEEL_PREV")
+        self.assertEqual(sender.DEFAULT_ACTION_MAPPING.get("button_12"), "FILTERWHEEL_NEXT")
+        self.assertIn("FILTERWHEEL_PREV", sender.AVAILABLE_ACTIONS)
+        self.assertIn("FILTERWHEEL_NEXT", sender.AVAILABLE_ACTIONS)
+
     def test_gui_settings_round_trip_includes_focus_step(self):
         settings = {
             "controller": "JC-U3712T",
