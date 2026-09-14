@@ -134,29 +134,18 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(sender.get_gamepad_name(FakeJoy()), "DualSense Wireless Controller")
 
     def test_filter_slot_count_stops_at_first_invalid_slot(self):
-        responses = [
-            "('R',)",
-            "('G',)",
-            "('Invalid',)",
-            "('Invalid',)",
-            "('Invalid',)",
-            "('Invalid',)",
-            "('Invalid',)",
-            "('Invalid',)",
-            "('Invalid',)",
-            "('Invalid',)",
-        ]
+        responses = [("R",), ("G",), ("Invalid",)]
 
-        def wrapped_run(command, capture_output, text, check):
-            index = wrapped_run.calls
-            wrapped_run.calls += 1
+        async def wrapped_call(method_name, *args):
+            index = wrapped_call.calls
+            wrapped_call.calls += 1
             if index >= len(responses):
                 index = len(responses) - 1
-            return type("Result", (), {"returncode": 0, "stdout": responses[index], "stderr": ""})()
+            return responses[index]
 
-        wrapped_run.calls = 0
+        wrapped_call.calls = 0
 
-        with patch("remote_indipad_receiver.subprocess.run", side_effect=wrapped_run):
+        with patch("remote_indipad_receiver._call_indi_method", side_effect=wrapped_call):
             self.assertEqual(receiver.get_filter_slot_count("Filter Simulator"), 2)
 
     def test_clear_console_emits_screen_clear_sequence(self):
@@ -265,26 +254,54 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(handler.drain(), ["[receiver] start", "[receiver] action"])
         self.assertEqual(handler.drain(), [])
 
-    def test_build_focus_gdbus_commands_uses_selected_driver_name(self):
-        commands = receiver.build_focus_gdbus_commands("GEMINI EAF GS150RC", "FOCUS_IN")
-        self.assertEqual(commands[0], [
-            "gdbus", "call", "--session", "--dest", "org.kde.kstars",
-            "--object-path", "/KStars/INDI", "--method",
-            "org.kde.kstars.INDI.setSwitch",
-            "GEMINI EAF GS150RC", "FOCUS_MOTION", "FOCUS_INWARD", "On",
-        ])
-        self.assertEqual(commands[1][:8], [
-            "gdbus", "call", "--session", "--dest", "org.kde.kstars",
-            "--object-path", "/KStars/INDI", "--method",
-        ])
-        self.assertEqual(commands[1][8], "org.kde.kstars.INDI.sendProperty")
-        self.assertEqual(commands[2][8], "org.kde.kstars.INDI.setNumber")
-        self.assertEqual(commands[3][8], "org.kde.kstars.INDI.sendProperty")
+    def test_build_focus_dbus_calls_uses_selected_driver_name(self):
+        calls = receiver.build_focus_dbus_calls("GEMINI EAF GS150RC", "FOCUS_IN")
+        self.assertEqual(calls[0], ("setSwitch", ("GEMINI EAF GS150RC", "FOCUS_MOTION", "FOCUS_INWARD", "On")))
+        self.assertEqual(calls[1], ("sendProperty", ("GEMINI EAF GS150RC", "FOCUS_MOTION")))
+        self.assertEqual(calls[2][0], "setNumber")
+        self.assertEqual(calls[3], ("sendProperty", ("GEMINI EAF GS150RC", "REL_FOCUS_POSITION")))
+
+    def test_indi_method_uses_dbus_next_proxy_method_names(self):
+        calls = []
+
+        class FakeInterface:
+            async def call_set_switch(self, *args):
+                calls.append(("set_switch", args))
+                return None
+
+        class FakeProxy:
+            def get_interface(self, name):
+                self.interface_name = name
+                return FakeInterface()
+
+        class FakeBus:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def connect(self):
+                pass
+
+            async def introspect(self, *args):
+                return object()
+
+            def get_proxy_object(self, *args):
+                return FakeProxy()
+
+            def disconnect(self):
+                pass
+
+        with patch("remote_indipad_receiver.MessageBus", FakeBus):
+            fake_bus_type = type("FakeBusType", (), {"SESSION": "session"})
+            with patch("remote_indipad_receiver.BusType", fake_bus_type):
+                import asyncio
+                asyncio.run(receiver._call_indi_method("setSwitch", "Device", "FOCUS_MOTION", "FOCUS_INWARD", "On"))
+
+        self.assertEqual(calls, [("set_switch", ("Device", "FOCUS_MOTION", "FOCUS_INWARD", "On"))])
 
     def test_focus_step_uses_step_from_protocol(self):
-        commands = receiver.build_focus_gdbus_commands("GEMINI EAF GS150RC", "FOCUS_IN", step=250)
-        self.assertIn("250", commands[2])
-        self.assertEqual(commands[2][-1], "250")
+        calls = receiver.build_focus_dbus_calls("GEMINI EAF GS150RC", "FOCUS_IN", step=250)
+        self.assertIn("250", calls[2][1])
+        self.assertEqual(calls[2][1][-1], "250")
 
     def test_device_profile_selection_and_force_override(self):
         config = {

@@ -1,10 +1,8 @@
-import ast
 import asyncio
 import json
 import os
 import queue
 import socket
-import subprocess
 import sys
 import threading
 import time
@@ -51,7 +49,7 @@ FILTER_INTERFACE = 1 << 4
 ROTATOR_INTERFACE = 1 << 12
 
 try:
-    from dbus_next.aio import MessageBus
+    from dbus_next.aio.message_bus import MessageBus
     from dbus_next.constants import BusType
 except ImportError:  # pragma: no cover - optional dependency for D-Bus discovery
     MessageBus = None
@@ -173,40 +171,52 @@ def get_active_indi_device(device_type: str) -> str:
     return str(ACTIVE_INDI_DEVICE_NAMES.get(device_type, "") or "").strip()
 
 
-def get_filter_slot_count(driver_name: str) -> int:
+async def _call_indi_method(method_name: str, *args):
+    if MessageBus is None or BusType is None:
+        raise RuntimeError("dbus-next is required for INDI operations")
+
+    bus = MessageBus(bus_type=BusType.SESSION)
+    await bus.connect()
+    try:
+        introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
+        proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
+        interface = proxy.get_interface("org.kde.kstars.INDI")
+        method_names = {
+            "getText": "call_get_text",
+            "setSwitch": "call_set_switch",
+            "sendProperty": "call_send_property",
+            "setNumber": "call_set_number",
+        }
+        method = getattr(interface, method_names[method_name])
+        return await method(*args)
+    finally:
+        bus.disconnect()
+
+
+async def _get_filter_slot_count(driver_name: str) -> int:
     driver_name = str(driver_name or "").strip()
     if not driver_name:
         return 0
 
     slot_count = 0
     for slot_index in range(1, 11):
-        command = [
-            "gdbus", "call", "--session",
-            "--dest", "org.kde.kstars",
-            "--object-path", "/KStars/INDI",
-            "--method", "org.kde.kstars.INDI.getText",
-            driver_name, "FILTER_NAME", f"FILTER_SLOT_NAME_{slot_index}",
-        ]
         try:
-            result = subprocess.run(command, capture_output=True, text=True, check=False)
+            result = await _call_indi_method(
+                "getText", driver_name, "FILTER_NAME", f"FILTER_SLOT_NAME_{slot_index}"
+            )
         except Exception:
             break
 
-        output = (result.stdout or result.stderr or "").strip()
-        if not output:
+        result = _dbus_value(result)
+        if not result:
             continue
-        try:
-            parsed = ast.literal_eval(output)
-        except (ValueError, SyntaxError):
-            parsed = output
 
-        if isinstance(parsed, (tuple, list)):
-            values = parsed
-            if not values:
+        if isinstance(result, (tuple, list)):
+            if not result:
                 break
-            value = str(values[0]).strip()
+            value = str(_dbus_value(result[0])).strip()
         else:
-            value = str(parsed).strip()
+            value = str(result).strip()
 
         if value.lower() == "invalid":
             break
@@ -215,7 +225,11 @@ def get_filter_slot_count(driver_name: str) -> int:
     return slot_count
 
 
-def build_focus_gdbus_commands(driver_name: str, direction: str, step: int | None = None) -> list[list[str]]:
+def get_filter_slot_count(driver_name: str) -> int:
+    return asyncio.run(_get_filter_slot_count(driver_name))
+
+
+def build_focus_dbus_calls(driver_name: str, direction: str, step: int | None = None) -> list[tuple[str, tuple[str, ...]]]:
     driver_name = str(driver_name or "").strip()
     if not driver_name:
         raise ValueError("driver_name is required")
@@ -236,30 +250,10 @@ def build_focus_gdbus_commands(driver_name: str, direction: str, step: int | Non
             step_value = 100
 
     return [
-        [
-            "gdbus", "call", "--session", "--dest", "org.kde.kstars",
-            "--object-path", "/KStars/INDI", "--method",
-            "org.kde.kstars.INDI.setSwitch",
-            driver_name, "FOCUS_MOTION", motion, "On",
-        ],
-        [
-            "gdbus", "call", "--session", "--dest", "org.kde.kstars",
-            "--object-path", "/KStars/INDI", "--method",
-            "org.kde.kstars.INDI.sendProperty",
-            driver_name, "FOCUS_MOTION",
-        ],
-        [
-            "gdbus", "call", "--session", "--dest", "org.kde.kstars",
-            "--object-path", "/KStars/INDI", "--method",
-            "org.kde.kstars.INDI.setNumber",
-            driver_name, "REL_FOCUS_POSITION", "FOCUS_RELATIVE_POSITION", str(step_value),
-        ],
-        [
-            "gdbus", "call", "--session", "--dest", "org.kde.kstars",
-            "--object-path", "/KStars/INDI", "--method",
-            "org.kde.kstars.INDI.sendProperty",
-            driver_name, "REL_FOCUS_POSITION",
-        ],
+        ("setSwitch", (driver_name, "FOCUS_MOTION", motion, "On")),
+        ("sendProperty", (driver_name, "FOCUS_MOTION")),
+        ("setNumber", (driver_name, "REL_FOCUS_POSITION", "FOCUS_RELATIVE_POSITION", str(step_value))),
+        ("sendProperty", (driver_name, "REL_FOCUS_POSITION")),
     ]
 
 
@@ -270,17 +264,12 @@ def execute_focus_action(direction: str, driver_name: str | None = None, step: i
         print(f"[receiver] no focuser selected; cannot execute {direction}", flush=True)
         return
 
-    commands = build_focus_gdbus_commands(target_name, direction, step=step)
-    for command in commands:
+    calls = build_focus_dbus_calls(target_name, direction, step=step)
+    for method_name, args in calls:
         try:
-            result = subprocess.run(command, capture_output=True, text=True, check=False)
-            if result.returncode != 0:
-                print(f"[receiver] {direction} command failed: {' '.join(command)}", flush=True)
-                if result.stderr:
-                    print(f"[receiver] {result.stderr.strip()}", flush=True)
-                return
+            asyncio.run(_call_indi_method(method_name, *args))
         except Exception as exc:
-            print(f"[receiver] {direction} command error: {exc}", flush=True)
+            print(f"[receiver] {direction} D-Bus call error: {exc}", flush=True)
             return
 
     print(f"[receiver] executed {direction} on {target_name}", flush=True)
