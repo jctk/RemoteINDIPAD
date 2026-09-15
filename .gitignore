@@ -6,3 +6,4 @@ __pycache__/
 venv/
 temp_work/
 remote_indipad_sender.json
+remote_indipad_receiver.json
