@@ -1,9 +1,9 @@
 {
-  "controller": "",
-  "host": "192.168.1.11",
+  "controller": "JC-U3712T",
+  "host": "sm5.local",
   "port": 50007,
   "heartbeat": false,
-  "focus_step": 500,
+  "focus_step": 100,
   "action_mapping": {
     "dpad_up": "MOUNT_SOUTH",
     "dpad_down": "MOUNT_NORTH",
@@ -19,6 +19,8 @@
     "button_8": "FOCUS_IN",
     "button_9": "MOUNT_STOP",
     "button_10": "FOCUS_STOP",
+    "button_11": "FILTERWHEEL_PREV",
+    "button_12": "FILTERWHEEL_NEXT",
     "left_x": "SKYMAP_MOVE",
     "left_y": "SKYMAP_MOVE",
     "right_x": "SKYMAP_ROTATE",
