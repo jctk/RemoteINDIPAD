@@ -3,12 +3,256 @@ KStars / Ekos / INDI を操作する D-BUS コマンド
 
 # KStars
 
-## 調査
+## KStars のインターフェース情報
 
-基本構造
-
-```
+```bash
 gdbus introspect --session --dest org.kde.kstars --object-path /KStars
+node /KStars {
+  interface org.kde.KMainWindow {
+    methods:
+      actions(out as arg_0);
+      activateAction(in  s action,
+                     out b arg_0);
+      disableAction(in  s action,
+                    out b arg_0);
+      enableAction(in  s action,
+                   out b arg_0);
+      actionIsEnabled(in  s action,
+                      out b arg_0);
+      actionToolTip(in  s action,
+                    out s arg_0);
+      winId(out x arg_0);
+      grabWindowToClipBoard();
+    signals:
+    properties:
+  };
+  interface org.kde.kstars {
+    methods:
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setRaDec(in  d ra,
+               in  d dec);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setRaDecJ2000(in  d ra0,
+                    in  d dec0);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setAltAz(in  d alt,
+               in  d az,
+               in  b altIsRefracted);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setAltAz(in  d alt,
+               in  d az);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      lookTowards(in  s direction);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      addLabel(in  s name);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      removeLabel(in  s name);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      addTrail(in  s name);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      removeTrail(in  s name);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      zoomIn();
+      @org.freedesktop.DBus.Method.NoReply("true")
+      zoomOut();
+      @org.freedesktop.DBus.Method.NoReply("true")
+      defaultZoom();
+      @org.freedesktop.DBus.Method.NoReply("true")
+      zoom(in  d z);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setLocalTime(in  i yr,
+                   in  i mth,
+                   in  i day,
+                   in  i hr,
+                   in  i min,
+                   in  i sec);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setTimeToNow();
+      @org.freedesktop.DBus.Method.NoReply("true")
+      waitFor(in  d t);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      waitForKey(in  s k);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setTracking(in  b track);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      changeViewOption(in  s option,
+                       in  s value);
+      getOption(in  s name,
+                out v arg_1);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setOption(in  s name,
+                in  v value);
+      getFocusInformationXML(out s arg_0);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      readConfig();
+      @org.freedesktop.DBus.Method.NoReply("true")
+      writeConfig();
+      @org.freedesktop.DBus.Method.NoReply("true")
+      popupMessage(in  i x,
+                   in  i y,
+                   in  s message);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      drawLine(in  i x1,
+               in  i y1,
+               in  i x2,
+               in  i y2,
+               in  i speed);
+      setGeoLocation(in  s city,
+                     in  s province,
+                     in  s country,
+                     out b arg_0);
+      location(out s arg_0);
+      setGPSLocation(in  d longitude,
+                     in  d latitude,
+                     in  d elevation,
+                     in  d tz0,
+                     out b arg_0);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setColor(in  s colorName,
+               in  s value);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      loadColorScheme(in  s name);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      exportImage(in  s filename,
+                  in  i width,
+                  in  i height,
+                  in  b includeLegend);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      exportImage(in  s filename,
+                  in  i width,
+                  in  i height);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      exportImage(in  s filename,
+                  in  i width);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      exportImage(in  s filename);
+      getDSSURL(in  s objectName,
+                out s arg_0);
+      getDSSURL(in  d RA_J2000,
+                in  d Dec_J2000,
+                in  d width,
+                in  d height,
+                out s arg_0);
+      getDSSURL(in  d RA_J2000,
+                in  d Dec_J2000,
+                out s arg_0);
+      getObjectDataXML(in  s objectName,
+                       in  b fallbackToInternet,
+                       in  b storeInternetResolved,
+                       out s arg_0);
+      getObjectDataXML(in  s objectName,
+                       in  b fallbackToInternet,
+                       out s arg_0);
+      getObjectDataXML(in  s objectName,
+                       out s arg_0);
+      getObjectPositionInfo(in  s objectName,
+                            out s arg_0);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      renderEyepieceView(in  s objectName,
+                         in  s destPathChart,
+                         in  d fovWidth,
+                         in  d fovHeight,
+                         in  d rotation,
+                         in  d scale,
+                         in  b flip,
+                         in  b invert,
+                         in  s imagePath,
+                         in  s destPathImage,
+                         in  b overlay,
+                         in  b invertColors);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setApproxFOV(in  d FOV_Degrees);
+      getSkyMapDimensions(out s arg_0);
+      getObservingWishListObjectNames(out s arg_0);
+      getObservingSessionPlanObjectNames(out s arg_0);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      printImage(in  b usePrintDialog,
+                 in  b useChartColors);
+      @org.qtproject.QtDBus.QtTypeName.In0("QUrl")
+      @org.qtproject.QtDBus.QtTypeName.Out0("QUrl")
+      @org.freedesktop.DBus.Method.NoReply("true")
+      openFITS(in  (i) imageURL);
+      listSkyMapViews(out as arg_0);
+      setSkyMapView(in  s viewName,
+                    out b arg_0);
+      setFOVIndicatorVisibility(in  s fovName,
+                                in  b visibility,
+                                out b arg_0);
+      getFOVIndicatorVisibility(in  s fovName,
+                                out b arg_0);
+      getFOVIndicators(out as arg_0);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setSkyMapRotation(in  d viewAngle);
+      getSkyMapRotation(out d arg_0);
+      skyMapIsMirrored(out b arg_0);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setSkyMapMirrored(in  b mirrored);
+      getToggleableActionStates(out s arg_0);
+      activateAction(in  s actionName,
+                     out b arg_0);
+      getActions(out as arg_0);
+      setToggleableActionState(in  s actionName,
+                               in  b state,
+                               out b arg_0);
+      colorScheme(out s arg_0);
+    signals:
+      colorSchemeChanged();
+    properties:
+      readwrite s colorScheme = 'moonless-night.colors';
+      readonly s version = '3.8.4';
+      readonly s release = 'Stable';
+  };
+  interface org.freedesktop.DBus.Properties {
+    methods:
+      Get(in  s interface_name,
+          in  s property_name,
+          out v value);
+      Set(in  s interface_name,
+          in  s property_name,
+          in  v value);
+      @org.qtproject.QtDBus.QtTypeName.Out0("QVariantMap")
+      GetAll(in  s interface_name,
+             out a{sv} values);
+    signals:
+      @org.qtproject.QtDBus.QtTypeName.Out1("QVariantMap")
+      PropertiesChanged(s interface_name,
+                        a{sv} changed_properties,
+                        as invalidated_properties);
+    properties:
+  };
+  interface org.freedesktop.DBus.Introspectable {
+    methods:
+      Introspect(out s xml_data);
+    signals:
+    properties:
+  };
+  interface org.freedesktop.DBus.Peer {
+    methods:
+      Ping();
+      GetMachineId(out s machine_uuid);
+    signals:
+    properties:
+  };
+  node Ekos {
+  };
+  node FOV {
+  };
+  node INDI {
+  };
+  node SimClock {
+  };
+};
+```
+
+## KStars - SkyMap
+
+＊＊＊＊＊＊＊＊
+
+```bash
+gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.zoomIn
+gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.zoomOut
+gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.getSkyMapRotation
+gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.setSkyMapRotation "90.0"
 ```
 
 # INDI
@@ -125,7 +369,6 @@ node /KStars/INDI {
 ```
 
 ## 情報取得
-
 
 デバイスの一覧
 - デバイスの種類がわからないので使い道はない。
@@ -831,8 +1074,6 @@ gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method o
 
 ### MOUNT - Slew
 
-＊＊＊＊＊＊＊＊＊＊＊＊＊＊＊＊
-
 ```bash
 # 北 へ Slew
 gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.setSwitch "Telescope Simulator" "TELESCOPE_MOTION_NS" "MOTION_NORTH" "On"
@@ -841,6 +1082,14 @@ gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method o
 # 南 へ Slew
 gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.setSwitch "Telescope Simulator" "TELESCOPE_MOTION_NS" "MOTION_SOUTH" "On"
 gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.sendProperty "Telescope Simulator" "TELESCOPE_MOTION_NS"
+
+# 西 へ Slew
+gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.setSwitch "Telescope Simulator" "TELESCOPE_MOTION_WE" "MOTION_WEST" "On"
+gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.sendProperty "Telescope Simulator" "TELESCOPE_MOTION_WE"
+
+# 東 へ Slew
+gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.setSwitch "Telescope Simulator" "TELESCOPE_MOTION_WE" "MOTION_EAST" "On"
+gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.sendProperty "Telescope Simulator" "TELESCOPE_MOTION_WE"
 ```
 
 ### MOUNT - Abort Slewing
@@ -850,7 +1099,7 @@ gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method o
 gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.sendProperty "Telescope Simulator" "TELESCOPE_ABORT_MOTION"
 ```
 
-### 参考）MOUNT SLEW に関する情報取得
+### MOUNT - SLEW 情報取得
 
 ```bash
 gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.getSwitch "Telescope Simulator" "TELESCOPE_MOTION_NS" "MOTION_NORTH"
@@ -858,51 +1107,6 @@ gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method o
 gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.getSwitch "Telescope Simulator" "TELESCOPE_MOTION_WE" "MOTION_WEST"
 gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.getSwitch "Telescope Simulator" "TELESCOPE_MOTION_WE" "MOTION_EAST"
 ```
-
-
-
-
-
-## KStars
-
-gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.zoomIn
-gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.zoomOut
-gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.getSkyMapRotation
-gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.setSkyMapRotation "90.0"
-
-
-
-
-
-
-
-gdbus call --session --dest org.kde.kstars --object-path /KStars/Ekos/Capture --method org.freedesktop.DBus.Properties.GetAll org.kde.kstars.Ekos.Capture
-gdbus call --session --dest org.kde.kstars --object-path /KStars/Ekos/Capture --method org.freedesktop.DBus.Properties.GetAll org.kde.kstars.Ekos.Capture
-
-
-gdbus introspect --session --dest org.kde.kstars --object-path /KStars/Ekos/Capture
-
-
-
-gdbus introspect --session --dest org.kde.kstars --object-path /KStars/INDI
-
-
-gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.getDevices
-
-gdbus introspect --session --dest org.kde.kstars --object-path /KStars/Ekos
-gdbus call --session --dest org.kde.kstars --object-path /KStars/Ekos --method org.kde.kstars.Ekos.getProfiles 
-
-busctl list
-
-        QDBusInterface capture(
-            "org.kde.kstars",
-            "/KStars/Ekos/Capture",
-            "org.kde.kstars.Ekos.Capture",
-            QDBusConnection::sessionBus());
-
-        QVariant opticalTrainValue = capture.property("opticalTrain"); // 
-
-
 
 # Ekos
 
