@@ -63,7 +63,9 @@ def detect_joysticks():
     return devices
 
 
+# Gamepad monitor window class
 class GamepadMonitorWindow(QWidget):
+    # Initialize the gamepad monitor window with the given devices and joystick index
     def __init__(self, devices, joystick_index: int):
         super().__init__()
         self.devices = devices
@@ -71,17 +73,24 @@ class GamepadMonitorWindow(QWidget):
         self.joy = pygame.joystick.Joystick(joystick_index)
         self.joy.init()
 
+        # Initialize the gamepad monitor window UI components
         self.setWindowTitle("Gamepad Monitor")
-        self.resize(900, 650)
+        self.resize(600, 650)
 
         self.axis_values = {}
         self.button_values = {}
         self.hat_values = {}
 
-        self.main_layout = QHBoxLayout(self)
-        self.main_layout.setContentsMargins(10, 10, 10, 10)
+        # Create the top-level layout for the window
+        self.root_layout = QVBoxLayout(self)
+        self.root_layout.setContentsMargins(10, 10, 10, 10)
+        self.root_layout.setSpacing(10)
+
+        # Create the main layout for the left/right split panel
+        self.main_layout = QHBoxLayout()
         self.main_layout.setSpacing(10)
 
+        # Create the left panel for device selection and attributes
         self.left_panel = QWidget()
         self.left_layout = QVBoxLayout(self.left_panel)
 
@@ -111,6 +120,7 @@ class GamepadMonitorWindow(QWidget):
         self.left_layout.addStretch()
         self.main_layout.addWidget(self.left_panel, 1)
 
+        # Create the right panel for displaying gamepad input information
         self.right_panel = QWidget()
         self.right_layout = QVBoxLayout(self.right_panel)
 
@@ -148,30 +158,26 @@ class GamepadMonitorWindow(QWidget):
             hat_layout.addWidget(label)
         self.right_layout.addWidget(hat_widget)
 
+        # Create the close button and its container for the right panel
         self.close_button = QPushButton("Close")
         self.close_button.clicked.connect(self.close_window)
         self.close_button.setMinimumWidth(180)
         self.close_button.setMaximumWidth(260)
-
-        self.close_container = QWidget()
-        self.close_container_layout = QHBoxLayout(self.close_container)
-        self.close_container_layout.setContentsMargins(0, 0, 0, 0)
-        self.close_container_layout.addStretch(1)
-        self.close_container_layout.addWidget(self.close_button, 0)
-        self.close_container_layout.addStretch(1)
-
-        self.right_layout.addStretch(1)
-        self.right_layout.addWidget(self.close_container)
+        self.close_button.setFixedWidth(180)
 
         self.main_layout.addWidget(self.right_panel, 1)
         self.main_layout.setStretch(0, 1)
         self.main_layout.setStretch(1, 1)
+
+        self.root_layout.addLayout(self.main_layout)
+        self.root_layout.addWidget(self.close_button, 0, Qt.AlignmentFlag.AlignHCenter)
         self.update_selected_device_attributes()
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh_values)
         self.timer.start(50)
 
+    # Handle the event when the selected device in the combo box changes
     def on_device_changed(self, index: int):
         if index < 0 or index >= len(self.devices):
             return
@@ -182,6 +188,7 @@ class GamepadMonitorWindow(QWidget):
         self.update_selected_device_attributes()
         self.clear_value_labels()
 
+    # Clear the displayed values for axes, buttons, and hats
     def clear_value_labels(self):
         for label in self.axis_values.values():
             label.setText("")
@@ -190,6 +197,7 @@ class GamepadMonitorWindow(QWidget):
         for label in self.hat_values.values():
             label.setText("")
 
+    # Update the displayed attributes for the currently selected device
     def update_selected_device_attributes(self):
         device = self.devices[self.device_combo.currentIndex()]
         self.attribute_labels["name"].setText(device["name"])
@@ -200,6 +208,7 @@ class GamepadMonitorWindow(QWidget):
         self.attribute_labels["hats"].setText(str(device["hats"]))
         self.attribute_labels["trackballs"].setText(str(device["trackballs"]))
 
+    # Refresh the displayed values for axes, buttons, and hats
     def refresh_values(self):
         if self.joy is None:
             return
@@ -221,6 +230,7 @@ class GamepadMonitorWindow(QWidget):
             display_index = hat_index + 1
             self.hat_values[hat_index].setText(f"Hat {display_index}: ({x}, {y})")
 
+    # Close the gamepad monitor window and clean up resources
     def close_window(self):
         self.timer.stop()
         pygame.quit()
