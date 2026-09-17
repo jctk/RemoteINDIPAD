@@ -159,6 +159,15 @@ def _debug_dispatch(label: str, action: str, pressed: bool, source: str) -> None
 
 
 ACTIVE_INDI_DEVICE_NAMES = {"mount": "", "focuser": "", "filter": "", "rotator": ""}
+_ROTATOR_HOLD_EVENTS: dict[str, threading.Event] = {}
+
+
+def stop_rotator_hold(direction: str | None = None) -> None:
+    directions = [direction] if direction is not None else ["CAA_ROTATE_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE"]
+    for active_direction in directions:
+        event = _ROTATOR_HOLD_EVENTS.pop(active_direction, None)
+        if event is not None:
+            event.set()
 
 
 def set_active_indi_device(device_type: str, name: str | None) -> None:
@@ -518,6 +527,54 @@ async def _execute_rotator_action_async(driver_name: str, direction: str, angle:
         return current_angle, float(target_angle), 360.0, False
     finally:
         bus.disconnect()
+
+
+def read_rotator_state(driver_name: str | None = None) -> str:
+    target_name = (driver_name or get_active_indi_device("rotator") or "").strip()
+    if not target_name:
+        return ""
+    if MessageBus is None or BusType is None:
+        return ""
+
+    async def _read_state_async():
+        bus = MessageBus(bus_type=BusType.SESSION)
+        await bus.connect()
+        try:
+            introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
+            proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
+            interface = proxy.get_interface("org.kde.kstars.INDI")
+            result = await interface.call_get_property_state(target_name, "ABS_ROTATOR_ANGLE")
+            value = _dbus_value(result)
+            if isinstance(value, (tuple, list)):
+                value = _dbus_value(value[0]) if value else ""
+            return str(value).strip().lower()
+        finally:
+            bus.disconnect()
+
+    try:
+        return asyncio.run(_read_state_async())
+    except Exception as exc:
+        print(f"[receiver] D-Bus call error: getPropertyState(ABS_ROTATOR_ANGLE) -> {exc}", flush=True)
+        return ""
+
+
+def _run_rotator_hold_loop(direction: str, driver_name: str, stop_event: threading.Event, interval: float = 0.05, executor=None) -> None:
+    if executor is None:
+        executor = execute_rotator_action
+
+    direction = str(direction).upper()
+    if not driver_name:
+        return
+
+    step_angle = 1.0 if direction == "CAA_ROTATE_CLOCKWISE" else -1.0
+    try:
+        while not stop_event.is_set():
+            state = read_rotator_state(driver_name)
+            if state == "ok":
+                executor(direction, step_angle, driver_name=driver_name)
+            time.sleep(interval)
+    finally:
+        stop_rotator_hold(direction)
 
 
 def execute_rotator_action(direction: str, angle: int | float | None = None, driver_name: str | None = None) -> float | None:
@@ -1109,16 +1166,37 @@ def handle_filterwheel_next(pressed: bool, source: str = "button") -> None:
         execute_filterwheel_action("FILTERWHEEL_NEXT")
 
 
+def _start_rotator_hold(direction: str, target_name: str) -> None:
+    normalized = str(direction).upper()
+    if not target_name:
+        return
+    stop_rotator_hold(normalized)
+    stop_event = threading.Event()
+    _ROTATOR_HOLD_EVENTS[normalized] = stop_event
+    thread = threading.Thread(
+        target=_run_rotator_hold_loop,
+        args=(normalized, target_name, stop_event),
+        daemon=True,
+    )
+    thread.start()
+
+
 def handle_caa_rotate_counter_clockwise(pressed: bool, source: str = "button", angle: int | None = None) -> None:
     _debug_dispatch("CAA_ROTATE_COUNTER_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE", pressed, source)
+    target_name = (get_active_indi_device("rotator") or "").strip()
     if pressed:
-        execute_rotator_action("CAA_ROTATE_COUNTER_CLOCKWISE")
+        _start_rotator_hold("CAA_ROTATE_COUNTER_CLOCKWISE", target_name)
+        return
+    stop_rotator_hold("CAA_ROTATE_COUNTER_CLOCKWISE")
 
 
 def handle_caa_rotate_clockwise(pressed: bool, source: str = "button", angle: int | None = None) -> None:
     _debug_dispatch("CAA_ROTATE_CLOCKWISE", "CAA_ROTATE_CLOCKWISE", pressed, source)
+    target_name = (get_active_indi_device("rotator") or "").strip()
     if pressed:
-        execute_rotator_action("CAA_ROTATE_CLOCKWISE")
+        _start_rotator_hold("CAA_ROTATE_CLOCKWISE", target_name)
+        return
+    stop_rotator_hold("CAA_ROTATE_CLOCKWISE")
 
 
 def handle_caa_rotate_abort(pressed: bool, source: str = "button") -> None:
@@ -1251,6 +1329,8 @@ class Receiver:
                                     self._emit_log(
                                         f"[receiver] heartbeat timeout: no valid message for {self.heartbeat_timeout:.1f}s"
                                     )
+                                    stop_rotator_hold()
+                                    execute_rotator_abort()
                                     heartbeat_lost = True
                             continue
                         except OSError:
@@ -1259,6 +1339,8 @@ class Receiver:
                                     f"[receiver] heartbeat timeout: no valid message for {self.heartbeat_timeout:.1f}s",
                                     flush=True,
                                 )
+                                stop_rotator_hold()
+                                execute_rotator_abort()
                                 heartbeat_lost = True
                             break
 
@@ -1268,6 +1350,8 @@ class Receiver:
                                     f"[receiver] heartbeat timeout: no valid message for {self.heartbeat_timeout:.1f}s",
                                     flush=True,
                                 )
+                                stop_rotator_hold()
+                                execute_rotator_abort()
                                 heartbeat_lost = True
                             break
 

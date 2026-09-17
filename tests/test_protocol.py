@@ -1,4 +1,5 @@
 import io
+import threading
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -289,6 +290,37 @@ class ProtocolTests(unittest.TestCase):
                 with patch("remote_indipad_receiver.get_active_indi_device", return_value="Rotator Simulator"):
                     result = receiver.execute_rotator_action("CAA_ROTATE_CLOCKWISE", 45, driver_name="Rotator Simulator")
         self.assertIsNone(result)
+
+    def test_rotator_hold_loop_repeats_until_stop_event(self):
+        calls = []
+        stop_event = threading.Event()
+
+        def fake_execute(direction, angle=None, driver_name=None):
+            calls.append((direction, angle, driver_name))
+            if len(calls) >= 3:
+                stop_event.set()
+            return 1.0
+
+        receiver._run_rotator_hold_loop(
+            "CAA_ROTATE_CLOCKWISE",
+            "Rotator Simulator",
+            stop_event=stop_event,
+            interval=0.0,
+            executor=fake_execute,
+        )
+
+        self.assertGreaterEqual(len(calls), 3)
+        self.assertTrue(all(direction == "CAA_ROTATE_CLOCKWISE" for direction, _, _ in calls))
+        self.assertTrue(all(angle == 1 for _, angle, _ in calls))
+
+    def test_stop_rotator_hold_clears_active_event(self):
+        stop_event = threading.Event()
+        receiver._ROTATOR_HOLD_EVENTS["CAA_ROTATE_COUNTER_CLOCKWISE"] = stop_event
+
+        receiver.stop_rotator_hold("CAA_ROTATE_COUNTER_CLOCKWISE")
+
+        self.assertTrue(stop_event.is_set())
+        self.assertNotIn("CAA_ROTATE_COUNTER_CLOCKWISE", receiver._ROTATOR_HOLD_EVENTS)
 
     def test_queue_log_handler_buffers_messages_thread_safely(self):
         handler = receiver.QueueLogHandler()
