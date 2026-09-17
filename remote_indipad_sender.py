@@ -462,6 +462,15 @@ def state_signature(axes, buttons, dpad=None):
     )
 
 
+def _rotation_angle_for_duration(action: str, duration_seconds: float) -> int | None:
+    threshold_seconds = 0.5
+    if action == "CAA_ROTATE_CLOCKWISE":
+        return 1 if duration_seconds < threshold_seconds else 5
+    if action == "CAA_ROTATE_COUNTER_CLOCKWISE":
+        return -1 if duration_seconds < threshold_seconds else -5
+    return None
+
+
 def build_action_events(
     dpad: dict | None = None,
     buttons: dict | None = None,
@@ -470,11 +479,16 @@ def build_action_events(
     action_map: dict | None = None,
     focus_step: int | None = None,
     focus_step_state: dict | None = None,
+    button_press_times: dict | None = None,
+    now: float | None = None,
 ):
     dpad = {} if dpad is None else dpad
     buttons = {} if buttons is None else buttons
     previous_dpad = {} if previous_dpad is None else previous_dpad
     previous_buttons = {} if previous_buttons is None else previous_buttons
+    if button_press_times is None:
+        button_press_times = {}
+    now = time.monotonic() if now is None else float(now)
     events = []
     resolved_map = resolve_action_mapping(action_map)
     current_focus_step = _clamp_focus_step(focus_step, default=100) if focus_step is not None else 100
@@ -529,10 +543,24 @@ def build_action_events(
                     if current_pressed:
                         advance_step("down")
                     continue
+                if action in {"CAA_ROTATE_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE"}:
+                    if current_pressed:
+                        button_press_times[key] = now
+                    elif previous_pressed:
+                        started = button_press_times.pop(key, now)
+                        duration = max(0.0, now - float(started))
+                        angle = _rotation_angle_for_duration(action, duration)
+                        if angle is not None:
+                            events.append({"action": action, "pressed": False, "source": "button", "angle": angle})
+                    continue
                 event = {"action": action, "pressed": current_pressed, "source": "button"}
                 if action in {"FOCUS_IN", "FOCUS_OUT"}:
                     event["step"] = base_focus_step
                 events.append(event)
+
+    for key in list(button_press_times):
+        if key.startswith("button_") and key in buttons and not bool(buttons.get(key)):
+            button_press_times.pop(key, None)
 
     if focus_step_state is not None:
         focus_step_state["value"] = current_focus_step
@@ -756,6 +784,7 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
         heartbeat_interval = 1.0
         previous_dpad = {}
         previous_buttons = {}
+        button_press_times = {}
         while True:
             now = time.monotonic()
             if now - last_heartbeat >= heartbeat_interval:
@@ -787,6 +816,8 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
                     action_map=resolved_action_map,
                     focus_step=focus_state["value"],
                     focus_step_state=focus_state,
+                    button_press_times=button_press_times,
+                    now=now,
                 )
                 for event in action_events:
                     message = protocol.build_action_payload(
@@ -794,6 +825,7 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
                         pressed=event["pressed"],
                         source=event["source"],
                         step=event.get("step"),
+                        angle=event.get("angle"),
                     )
                     if protocol.validate_message(message):
                         packet = protocol.serialize_message(message)
@@ -863,6 +895,7 @@ class SenderWorker(QObject):
             last_heartbeat = 0.0
             previous_dpad = {}
             previous_buttons = {}
+            button_press_times = {}
             while not self._stop_event.is_set():
                 now = time.monotonic()
                 if now - last_heartbeat >= 1.0:
@@ -887,6 +920,8 @@ class SenderWorker(QObject):
                     action_map=self.action_map,
                     focus_step=focus_step_state["value"],
                     focus_step_state=focus_step_state,
+                    button_press_times=button_press_times,
+                    now=now,
                 )
                 self._focus_step = _clamp_focus_step(focus_step_state["value"], default=100)
                 if previous_focus_step != self._focus_step and self._focus_step_changed_callback is not None:
@@ -902,6 +937,7 @@ class SenderWorker(QObject):
                         pressed=event["pressed"],
                         source=event["source"],
                         step=event.get("step"),
+                        angle=event.get("angle"),
                     )
                     packet = protocol.serialize_message(message)
                     self._socket.sendall((packet + "\n").encode("utf-8"))

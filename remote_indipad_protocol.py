@@ -21,7 +21,14 @@ def build_payload(
     return payload
 
 
-def build_action_payload(action: str, pressed: bool, source: str = "dpad", device: str = "gamepad", step: int | None = None) -> Dict[str, Any]:
+def build_action_payload(
+    action: str,
+    pressed: bool,
+    source: str = "dpad",
+    device: str = "gamepad",
+    step: int | None = None,
+    angle: int | None = None,
+) -> Dict[str, Any]:
     payload = {
         "ts": time.time(),
         "type": "action",
@@ -32,6 +39,8 @@ def build_action_payload(action: str, pressed: bool, source: str = "dpad", devic
     }
     if step is not None:
         payload["step"] = int(step)
+    if angle is not None:
+        payload["angle"] = int(angle)
     return payload
 
 
@@ -83,8 +92,14 @@ def validate_message(message: Dict[str, Any]) -> bool:
             return False
         if not isinstance(message["source"], str):
             return False
-        if "step" in message and not isinstance(message["step"], int):
+        if "step" in message and (not isinstance(message["step"], int) or isinstance(message["step"], bool)):
             return False
+        if "angle" in message:
+            angle = message["angle"]
+            if not isinstance(angle, int) or isinstance(angle, bool):
+                return False
+            if angle < -360 or angle > 360:
+                return False
         return True
 
     if msg_type != "axis":

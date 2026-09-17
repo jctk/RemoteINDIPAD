@@ -937,12 +937,16 @@ def handle_filterwheel_next(pressed: bool, source: str = "button") -> None:
         execute_filterwheel_action("FILTERWHEEL_NEXT")
 
 
-def handle_caa_rotate_counter_clockwise(pressed: bool, source: str = "button") -> None:
+def handle_caa_rotate_counter_clockwise(pressed: bool, source: str = "button", angle: int | None = None) -> None:
     _debug_dispatch("CAA_ROTATE_COUNTER_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE", pressed, source)
+    if angle is not None:
+        print(f"[receiver] rotation angle={angle}", flush=True)
 
 
-def handle_caa_rotate_clockwise(pressed: bool, source: str = "button") -> None:
+def handle_caa_rotate_clockwise(pressed: bool, source: str = "button", angle: int | None = None) -> None:
     _debug_dispatch("CAA_ROTATE_CLOCKWISE", "CAA_ROTATE_CLOCKWISE", pressed, source)
+    if angle is not None:
+        print(f"[receiver] rotation angle={angle}", flush=True)
 
 
 def handle_skymap_move(pressed: bool, source: str = "stick") -> None:
@@ -980,13 +984,16 @@ _DISPATCH_TABLE = {
 }
 
 
-def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown", step: int | None = None) -> None:
+def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown", step: int | None = None, angle: int | None = None) -> None:
     handler = _DISPATCH_TABLE.get(action)
     if handler is None:
         print(f"[receiver] unknown action: {action} pressed={pressed} source={source}", flush=True)
         return
     if action in {"FOCUS_IN", "FOCUS_OUT"}:
         handler(bool(pressed), str(source), step=step)
+        return
+    if action in {"CAA_ROTATE_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE"}:
+        handler(bool(pressed), str(source), angle=angle)
         return
     handler(bool(pressed), str(source))
 
@@ -1101,12 +1108,19 @@ class Receiver:
                                     pressed = bool(obj.get("pressed", False))
                                     source = obj.get("source", "unknown")
                                     step = obj.get("step")
+                                    angle = obj.get("angle")
                                     try:
                                         step_value = int(step) if step is not None else None
                                     except (TypeError, ValueError):
                                         step_value = None
-                                    self._emit_log(f"[receiver] action: {action} pressed={pressed} source={source} step={step_value}")
-                                    dispatch_abstract_action(action, pressed, source, step=step_value)
+                                    try:
+                                        angle_value = int(angle) if angle is not None else None
+                                    except (TypeError, ValueError):
+                                        angle_value = None
+                                    self._emit_log(
+                                        f"[receiver] action: {action} pressed={pressed} source={source} step={step_value} angle={angle_value}"
+                                    )
+                                    dispatch_abstract_action(action, pressed, source, step=step_value, angle=angle_value)
                                 else:
                                     extract_dpad_state(obj)
                                 last_seen = time.monotonic()
