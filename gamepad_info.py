@@ -1,5 +1,8 @@
-import sys
+# Gamepad information and monitoring utility using Pygame and PySide6
+# Provides functionality to detect connected gamepads and monitor their input in real-time.
 
+# Requires Pygame and PySide6 to be installed.
+import sys
 import pygame
 
 try:
@@ -25,7 +28,7 @@ except ImportError:  # pragma: no cover - depends on PySide6 being installed
     QFormLayout = None
     QHBoxLayout = None
 
-
+# Detect connected joysticks and return their information
 def detect_joysticks():
     if not pygame.get_init():
         pygame.init()
@@ -239,7 +242,7 @@ class GamepadMonitorWindow(QWidget):
         pygame.quit()
         self.close()
 
-
+# Main function for the gamepad monitor application
 def main():
     if not pygame.get_init():
         pygame.init()
@@ -260,6 +263,6 @@ def main():
     pygame.quit()
     return exit_code
 
-
+# Entry point for the gamepad monitor application
 if __name__ == "__main__":
     raise SystemExit(main())
