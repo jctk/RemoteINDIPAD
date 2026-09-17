@@ -128,9 +128,10 @@ class GamepadMonitorWindow(QWidget):
         self.if_title.setStyleSheet("font-weight: bold; font-size: 14px;")
         self.right_layout.addWidget(self.if_title)
 
+        # Create the axis input display section
         axis_widget = QWidget()
         axis_layout = QVBoxLayout(axis_widget)
-        axis_layout.addWidget(QLabel("Axes"))
+        axis_layout.addWidget(QLabel("AXES"))
         for axis_index in range(self.joy.get_numaxes()):
             display_index = axis_index + 1
             label = QLabel(f"Axis {display_index}: 0.000")
@@ -138,9 +139,10 @@ class GamepadMonitorWindow(QWidget):
             axis_layout.addWidget(label)
         self.right_layout.addWidget(axis_widget)
 
+        # Create the button input display section
         button_widget = QWidget()
         button_layout = QVBoxLayout(button_widget)
-        button_layout.addWidget(QLabel("Buttons"))
+        button_layout.addWidget(QLabel("BUTTONS"))
         for button_index in range(self.joy.get_numbuttons()):
             display_index = button_index + 1
             label = QLabel(f"Button {display_index}: Released")
@@ -148,9 +150,10 @@ class GamepadMonitorWindow(QWidget):
             button_layout.addWidget(label)
         self.right_layout.addWidget(button_widget)
 
+        # Create the hat input display section
         hat_widget = QWidget()
         hat_layout = QVBoxLayout(hat_widget)
-        hat_layout.addWidget(QLabel("Hats"))
+        hat_layout.addWidget(QLabel("HATS"))
         for hat_index in range(self.joy.get_numhats()):
             display_index = hat_index + 1
             label = QLabel(f"Hat {display_index}: (0, 0)")
@@ -159,7 +162,7 @@ class GamepadMonitorWindow(QWidget):
         self.right_layout.addWidget(hat_widget)
 
         # Create the close button and its container for the right panel
-        self.close_button = QPushButton("Close")
+        self.close_button = QPushButton("CLOSE")
         self.close_button.clicked.connect(self.close_window)
         self.close_button.setMinimumWidth(180)
         self.close_button.setMaximumWidth(260)
@@ -223,7 +226,7 @@ class GamepadMonitorWindow(QWidget):
             pressed = bool(self.joy.get_button(button_index))
             state = "Pressed" if pressed else "Released"
             display_index = button_index + 1
-            self.button_values[button_index].setText(f"Button {display_index}: {state}")
+            self.button_values[button_index].setText(f"Button {display_index:2}: {state}")
 
         for hat_index in range(self.joy.get_numhats()):
             x, y = self.joy.get_hat(hat_index)
