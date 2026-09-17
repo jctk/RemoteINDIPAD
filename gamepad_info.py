@@ -14,6 +14,7 @@ for i in range(count):
     print(f"\n=== GAMEPAD {i} ===")
     print("Joystick system name:", js.get_name())
     print("Instance ID:", js.get_instance_id())
+    print("GUID:", js.get_guid())
 
     print("Number of axes:", js.get_numaxes())
     print("Number of buttons:", js.get_numbuttons())
