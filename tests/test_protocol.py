@@ -252,6 +252,44 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(summary["pressed"], ["dpad_right"])
         self.assertEqual(summary["all"], ["dpad_up", "dpad_right"])
 
+    def test_rotator_target_angle_clamps_to_fixed_360_range(self):
+        self.assertEqual(receiver.normalize_rotator_target_angle(45.0, -50.0, 180.0), 0.0)
+        self.assertEqual(receiver.normalize_rotator_target_angle(45.0, 200.0, 180.0), 245.0)
+        self.assertEqual(receiver.normalize_rotator_target_angle(300.0, 120.0, 0), 360.0)
+        self.assertEqual(receiver.normalize_rotator_target_angle(300.0, -120.0, 0), 180.0)
+
+    def test_rotator_action_ignores_busy_property(self):
+        class FakeInterface:
+            async def call_get_property_state(self, *args):
+                return "busy"
+
+        class FakeProxy:
+            def get_interface(self, name):
+                return FakeInterface()
+
+        class FakeBus:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def connect(self):
+                pass
+
+            async def introspect(self, *args):
+                return object()
+
+            def get_proxy_object(self, *args):
+                return FakeProxy()
+
+            def disconnect(self):
+                pass
+
+        with patch("remote_indipad_receiver.MessageBus", FakeBus):
+            fake_bus_type = type("FakeBusType", (), {"SESSION": "session"})
+            with patch("remote_indipad_receiver.BusType", fake_bus_type):
+                with patch("remote_indipad_receiver.get_active_indi_device", return_value="Rotator Simulator"):
+                    result = receiver.execute_rotator_action("CAA_ROTATE_CLOCKWISE", 45, driver_name="Rotator Simulator")
+        self.assertIsNone(result)
+
     def test_queue_log_handler_buffers_messages_thread_safely(self):
         handler = receiver.QueueLogHandler()
         handler.emit("[receiver] start")

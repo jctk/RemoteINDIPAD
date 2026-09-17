@@ -426,6 +426,131 @@ def execute_filterwheel_action(direction: str, driver_name: str | None = None) -
     print(f"[receiver] executed {direction} on {target_name}: slot {current_slot} -> {target_slot}", flush=True)
 
 
+def normalize_rotator_target_angle(current_angle, delta_angle, max_rotation=360.0) -> float:
+    try:
+        current_value = float(current_angle)
+    except (TypeError, ValueError):
+        current_value = 0.0
+
+    try:
+        delta_value = float(delta_angle)
+    except (TypeError, ValueError):
+        delta_value = 0.0
+
+    max_value = 360.0
+    try:
+        _ = float(max_rotation)
+    except (TypeError, ValueError):
+        pass
+
+    target_value = current_value + delta_value
+    if target_value < 0:
+        target_value = 0.0
+    elif target_value > max_value:
+        target_value = max_value
+    return float(target_value)
+
+
+async def _execute_rotator_action_async(driver_name: str, direction: str, angle: int | float | None = None):
+    """Read the rotator state, clamp the target angle to the fixed 0..360 range, and move it in one bus session."""
+    if MessageBus is None or BusType is None:
+        raise RuntimeError("dbus-next is required for INDI operations")
+
+    bus = MessageBus(bus_type=BusType.SESSION)
+    await bus.connect()
+    try:
+        introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
+        proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
+        interface = proxy.get_interface("org.kde.kstars.INDI")
+
+        try:
+            state_result = await interface.call_get_property_state(driver_name, "ABS_ROTATOR_ANGLE")
+        except Exception as exc:
+            print(f"[receiver] D-Bus call error: getPropertyState(ABS_ROTATOR_ANGLE) -> {exc}", flush=True)
+            return None, None, 360.0, False
+
+        state_value = _dbus_value(state_result)
+        if isinstance(state_value, (tuple, list)):
+            state_value = _dbus_value(state_value[0]) if state_value else ""
+        if str(state_value).strip().lower() == "busy":
+            return None, None, 360.0, True
+
+        try:
+            current_result = await interface.call_get_number(driver_name, "ABS_ROTATOR_ANGLE", "ANGLE")
+        except Exception as exc:
+            print(f"[receiver] D-Bus call error: getNumber(ABS_ROTATOR_ANGLE, ANGLE) -> {exc}", flush=True)
+            return None, None, 360.0, False
+
+        current_value = _dbus_value(current_result)
+        if isinstance(current_value, (tuple, list)):
+            current_value = _dbus_value(current_value[0]) if current_value else 0
+        try:
+            current_angle = float(current_value)
+        except (TypeError, ValueError):
+            return None, None, 360.0, False
+
+        if angle is None:
+            target_angle = current_angle
+        else:
+            try:
+                delta = float(angle)
+            except (TypeError, ValueError):
+                delta = 0.0
+            target_angle = normalize_rotator_target_angle(current_angle, delta, 360.0)
+
+        if target_angle == current_angle:
+            return current_angle, target_angle, 360.0, False
+
+        set_args = (driver_name, "ABS_ROTATOR_ANGLE", "ANGLE", float(target_angle))
+        try:
+            set_result = await interface.call_set_number(*set_args)
+        except Exception as exc:
+            raise RuntimeError(f"D-Bus call setNumber{set_args} failed: {exc}") from exc
+        _check_indi_call_result("setNumber", set_args, set_result)
+
+        send_args = (driver_name, "ABS_ROTATOR_ANGLE")
+        try:
+            send_result = await interface.call_send_property(*send_args)
+        except Exception as exc:
+            raise RuntimeError(f"D-Bus call sendProperty{send_args} failed: {exc}") from exc
+        _check_indi_call_result("sendProperty", send_args, send_result)
+
+        return current_angle, float(target_angle), 360.0, False
+    finally:
+        bus.disconnect()
+
+
+def execute_rotator_action(direction: str, angle: int | float | None = None, driver_name: str | None = None) -> float | None:
+    direction = str(direction).upper()
+    target_name = (driver_name or get_active_indi_device("rotator") or "").strip()
+    if not target_name:
+        print(f"[receiver] no rotator selected; cannot execute {direction}", flush=True)
+        return None
+
+    if direction not in {"CAA_ROTATE_COUNTER_CLOCKWISE", "CAA_ROTATE_CLOCKWISE"}:
+        return None
+
+    try:
+        current_angle, target_angle, max_rotation, busy = asyncio.run(_execute_rotator_action_async(target_name, direction, angle))
+    except Exception as exc:
+        print(f"[receiver] {direction} D-Bus call error: {exc}", flush=True)
+        return None
+
+    if busy:
+        print(f"[receiver] {direction} ignored; {target_name} ABS_ROTATOR_ANGLE is Busy", flush=True)
+        return None
+
+    if current_angle is None:
+        print(f"[receiver] unable to read current rotator angle for {target_name}", flush=True)
+        return None
+
+    print(
+        f"[receiver] executed {direction} on {target_name}: angle {current_angle} -> {target_angle} (limit=360)",
+        flush=True,
+    )
+    return float(target_angle)
+
+
 def load_gui_settings(path: str | Path | None = None):
     config_path = Path(path) if path is not None else GUI_SETTINGS_PATH
     defaults = DEFAULT_GUI_SETTINGS.copy()
@@ -939,14 +1064,14 @@ def handle_filterwheel_next(pressed: bool, source: str = "button") -> None:
 
 def handle_caa_rotate_counter_clockwise(pressed: bool, source: str = "button", angle: int | None = None) -> None:
     _debug_dispatch("CAA_ROTATE_COUNTER_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE", pressed, source)
-    if angle is not None:
-        print(f"[receiver] rotation angle={angle}", flush=True)
+    if not pressed and angle is not None:
+        execute_rotator_action("CAA_ROTATE_COUNTER_CLOCKWISE", angle)
 
 
 def handle_caa_rotate_clockwise(pressed: bool, source: str = "button", angle: int | None = None) -> None:
     _debug_dispatch("CAA_ROTATE_CLOCKWISE", "CAA_ROTATE_CLOCKWISE", pressed, source)
-    if angle is not None:
-        print(f"[receiver] rotation angle={angle}", flush=True)
+    if not pressed and angle is not None:
+        execute_rotator_action("CAA_ROTATE_CLOCKWISE", angle)
 
 
 def handle_skymap_move(pressed: bool, source: str = "stick") -> None:
