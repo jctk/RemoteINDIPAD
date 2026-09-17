@@ -551,6 +551,53 @@ def execute_rotator_action(direction: str, angle: int | float | None = None, dri
     return float(target_angle)
 
 
+async def _execute_rotator_abort_async(driver_name: str):
+    """Abort the current rotator motion using the INDI abort switch."""
+    if MessageBus is None or BusType is None:
+        raise RuntimeError("dbus-next is required for INDI operations")
+
+    bus = MessageBus(bus_type=BusType.SESSION)
+    await bus.connect()
+    try:
+        introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
+        proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
+        interface = proxy.get_interface("org.kde.kstars.INDI")
+
+        set_args = (driver_name, "ROTATOR_ABORT_MOTION", "ABORT", "On")
+        try:
+            set_result = await interface.call_set_switch(*set_args)
+        except Exception as exc:
+            raise RuntimeError(f"D-Bus call setSwitch{set_args} failed: {exc}") from exc
+        _check_indi_call_result("setSwitch", set_args, set_result)
+
+        send_args = (driver_name, "ROTATOR_ABORT_MOTION")
+        try:
+            send_result = await interface.call_send_property(*send_args)
+        except Exception as exc:
+            raise RuntimeError(f"D-Bus call sendProperty{send_args} failed: {exc}") from exc
+        _check_indi_call_result("sendProperty", send_args, send_result)
+
+        return True
+    finally:
+        bus.disconnect()
+
+
+def execute_rotator_abort(driver_name: str | None = None) -> bool:
+    target_name = (driver_name or get_active_indi_device("rotator") or "").strip()
+    if not target_name:
+        print("[receiver] no rotator selected; cannot abort rotation", flush=True)
+        return False
+
+    try:
+        result = asyncio.run(_execute_rotator_abort_async(target_name))
+    except Exception as exc:
+        print(f"[receiver] CAA_ROTATE_ABORT D-Bus call error: {exc}", flush=True)
+        return False
+
+    print(f"[receiver] executed CAA_ROTATE_ABORT on {target_name}", flush=True)
+    return bool(result)
+
+
 def load_gui_settings(path: str | Path | None = None):
     config_path = Path(path) if path is not None else GUI_SETTINGS_PATH
     defaults = DEFAULT_GUI_SETTINGS.copy()
@@ -1064,14 +1111,20 @@ def handle_filterwheel_next(pressed: bool, source: str = "button") -> None:
 
 def handle_caa_rotate_counter_clockwise(pressed: bool, source: str = "button", angle: int | None = None) -> None:
     _debug_dispatch("CAA_ROTATE_COUNTER_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE", pressed, source)
-    if not pressed and angle is not None:
-        execute_rotator_action("CAA_ROTATE_COUNTER_CLOCKWISE", angle)
+    if pressed:
+        execute_rotator_action("CAA_ROTATE_COUNTER_CLOCKWISE")
 
 
 def handle_caa_rotate_clockwise(pressed: bool, source: str = "button", angle: int | None = None) -> None:
     _debug_dispatch("CAA_ROTATE_CLOCKWISE", "CAA_ROTATE_CLOCKWISE", pressed, source)
-    if not pressed and angle is not None:
-        execute_rotator_action("CAA_ROTATE_CLOCKWISE", angle)
+    if pressed:
+        execute_rotator_action("CAA_ROTATE_CLOCKWISE")
+
+
+def handle_caa_rotate_abort(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("CAA_ROTATE_ABORT", "CAA_ROTATE_ABORT", pressed, source)
+    if not pressed:
+        execute_rotator_abort()
 
 
 def handle_skymap_move(pressed: bool, source: str = "stick") -> None:
@@ -1103,6 +1156,7 @@ _DISPATCH_TABLE = {
     "FILTERWHEEL_NEXT": handle_filterwheel_next,
     "CAA_ROTATE_COUNTER_CLOCKWISE": handle_caa_rotate_counter_clockwise,
     "CAA_ROTATE_CLOCKWISE": handle_caa_rotate_clockwise,
+    "CAA_ROTATE_ABORT": handle_caa_rotate_abort,
     "SKYMAP_MOVE": handle_skymap_move,
     "SKYMAP_ZOOM": handle_skymap_zoom,
     "SKYMAP_ROTATE": handle_skymap_rotate,
@@ -1119,6 +1173,9 @@ def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown"
         return
     if action in {"CAA_ROTATE_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE"}:
         handler(bool(pressed), str(source), angle=angle)
+        return
+    if action == "CAA_ROTATE_ABORT":
+        handler(bool(pressed), str(source))
         return
     handler(bool(pressed), str(source))
 

@@ -243,8 +243,8 @@ $ source venv/bin/activate
 | フォーカサー | FOCUS_STOP | フォーカシング停止 | ボタン10 |
 | フィルターホイール | FILTERWHEEL_PREV | フィルターホイールのスロット番号を一つ減らす | ボタン11 |
 | フィルターホイール | FILTERWHEEL_NEXT | フィルターホイールのスロット番号を一つ増やす | ボタン12 |
-| ローテーター | CAA_ROTATE_COUNTER_CLOCKWISE | ローテーター反時計回り（角度減少方向の回転） | ボタン3 |
-| ローテーター | CAA_ROTATE_CLOCKWISE | ローテーター時計回り（角度増加方向の回転） | ボタン4 |
+| ローテーター | CAA_ROTATE_COUNTER_CLOCKWISE | ローテーター反時計回り（角度減少方向の回転）。ボタンダウンまたはアップでCAA_ROTATE_COUNTER_CLOCKWISEを送信 | ボタン3 |
+| ローテーター | CAA_ROTATE_CLOCKWISE | ローテーター時計回り（角度増加方向の回転）ボタンダウンまたはアップCAA_ROTATE_CLOCKWISEを送信 | ボタン4 |
 | KStars SkyMap | SKYMAP_MOVE | SkyMap の移動 | 左スティック（上下左右で画面に対して上下左右の移動） |
 | KStars SkyMap | SKYMAP_ZOOM | SkyMap のZoom In/Out | 右スティック（上下） |
 | KStars SkyMap | SKYMAP_ROTATE | SkyMap の回転 | 右スティック（左右） |
@@ -302,13 +302,16 @@ $ source venv/bin/activate
 
 #### ローテーター
 
-- 受信側: CAA_ROTATER_CLOCKWISE/COUNTER_CLOCKWISE が送信されると1度ローテーターを回転させる。継続しての移動ではない。
-- 連続して移動させるには、対象のボタンを繰り返しDOWN/UPする。
+- 送信側: CAA_ROTATE_CLOCKWISE または CAA_ROTATE_COUNTER_CLOCKWISE がマッピングされたボタンが押されたときと離されたときに CAA_ROTATE_CLOCKWISE または CAA_ROTATE_COUNTER_CLOCKWISE を送信する。
+- 受信側: CAA_ROTATER_CLOCKWISE/COUNTER_CLOCKWISE を受信し Pressed が true の場合にローテーターを回転させる。
+- 受信側: CAA_ROTATER_CLOCKWISE/COUNTER_CLOCKWISE を受信し Pressed が false の場合にローテーターを停止させる。
+- 受信側: Heartbeat が切れた場合はローテーターの回転を停止させる。
 
 | 抽象化操作名 | 動作 |
 | - | - |
-| CAA_ROTATE_COUNTER_CLOCKWISE | ローテーターを反時計回りに1度回転させる（角度減少方向の回転） |
-| CAA_ROTATE_CLOCKWISE | ローテーターを時計回りに1度回転させる（角度増加方向の回転） |
+| CAA_ROTATE_COUNTER_CLOCKWISE | ローテーターを反時計回りに回転させる（角度減少方向の回転） |
+| CAA_ROTATE_CLOCKWISE | ローテーターを時計回りに回転させる（角度増加方向の回転） |
+
 
 #### KStars SkyMap
 

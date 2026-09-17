@@ -462,15 +462,6 @@ def state_signature(axes, buttons, dpad=None):
     )
 
 
-def _rotation_angle_for_duration(action: str, duration_seconds: float) -> int | None:
-    threshold_seconds = 0.5
-    if action == "CAA_ROTATE_CLOCKWISE":
-        return 1 if duration_seconds < threshold_seconds else 5
-    if action == "CAA_ROTATE_COUNTER_CLOCKWISE":
-        return -1 if duration_seconds < threshold_seconds else -5
-    return None
-
-
 def build_action_events(
     dpad: dict | None = None,
     buttons: dict | None = None,
@@ -544,14 +535,11 @@ def build_action_events(
                         advance_step("down")
                     continue
                 if action in {"CAA_ROTATE_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE"}:
-                    if current_pressed:
+                    if current_pressed != previous_pressed:
+                        button_press_times[key] = now if current_pressed else button_press_times.get(key, now)
+                        events.append({"action": action, "pressed": current_pressed, "source": "button"})
+                    elif current_pressed:
                         button_press_times[key] = now
-                    elif previous_pressed:
-                        started = button_press_times.pop(key, now)
-                        duration = max(0.0, now - float(started))
-                        angle = _rotation_angle_for_duration(action, duration)
-                        if angle is not None:
-                            events.append({"action": action, "pressed": False, "source": "button", "angle": angle})
                     continue
                 event = {"action": action, "pressed": current_pressed, "source": "button"}
                 if action in {"FOCUS_IN", "FOCUS_OUT"}:

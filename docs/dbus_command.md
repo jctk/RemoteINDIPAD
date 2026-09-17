@@ -846,6 +846,10 @@ gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method o
 # ローテーターの角度を設定
 gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.setNumber "Rotator Simulator" "ABS_ROTATOR_ANGLE" "ANGLE" 10
 gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.sendProperty "Rotator Simulator" "ABS_ROTATOR_ANGLE"
+
+# ローテーターの回転の停止
+gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.setSwitch "Rotator Simulator" "ROTATOR_ABORT_MOTION" "ABORT" "On"
+gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.sendProperty "Rotator Simulator" "ROTATOR_ABORT_MOTION"
 ```
 
 -------------------

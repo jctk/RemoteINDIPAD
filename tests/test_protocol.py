@@ -421,21 +421,28 @@ class ProtocolTests(unittest.TestCase):
         payload["angle"] = -5
         self.assertTrue(protocol.validate_message(payload))
 
-    def test_rotation_actions_emit_relative_angles_on_release_only(self):
-        now = 1000.0
-        with patch("time.monotonic", return_value=now):
-            events = sender.build_action_events(
-                {},
-                {"button_3": False, "button_4": False},
-                {"button_3": True, "button_4": True},
-                {"button_3": True, "button_4": True},
-                action_map={"button_3": "CAA_ROTATE_COUNTER_CLOCKWISE", "button_4": "CAA_ROTATE_CLOCKWISE"},
-                button_press_times={"button_3": now - 0.4, "button_4": now - 0.7},
-            )
-        self.assertIn({"action": "CAA_ROTATE_COUNTER_CLOCKWISE", "pressed": False, "source": "button", "angle": -1}, events)
-        self.assertIn({"action": "CAA_ROTATE_CLOCKWISE", "pressed": False, "source": "button", "angle": 5}, events)
+    def test_rotation_actions_use_same_action_with_pressed_flag(self):
+        events = sender.build_action_events(
+            {},
+            {"button_3": True, "button_4": False},
+            {},
+            {},
+            action_map={"button_3": "CAA_ROTATE_COUNTER_CLOCKWISE", "button_4": "CAA_ROTATE_CLOCKWISE"},
+        )
+        self.assertIn({"action": "CAA_ROTATE_COUNTER_CLOCKWISE", "pressed": True, "source": "button"}, events)
+        self.assertNotIn({"action": "CAA_ROTATE_ABORT", "pressed": False, "source": "button"}, events)
 
-    def test_rotation_button_press_times_persist_across_poll_cycles(self):
+        release = sender.build_action_events(
+            {},
+            {"button_3": False, "button_4": False},
+            {},
+            {"button_3": True, "button_4": False},
+            action_map={"button_3": "CAA_ROTATE_COUNTER_CLOCKWISE", "button_4": "CAA_ROTATE_CLOCKWISE"},
+        )
+        self.assertIn({"action": "CAA_ROTATE_COUNTER_CLOCKWISE", "pressed": False, "source": "button"}, release)
+        self.assertNotIn({"action": "CAA_ROTATE_ABORT", "pressed": False, "source": "button"}, release)
+
+    def test_rotation_button_press_times_are_trackable_but_not_emitted_as_abort(self):
         press_times = {}
         first = sender.build_action_events(
             {},
@@ -446,7 +453,7 @@ class ProtocolTests(unittest.TestCase):
             button_press_times=press_times,
             now=10.0,
         )
-        self.assertEqual(first, [])
+        self.assertEqual(first, [{"action": "CAA_ROTATE_CLOCKWISE", "pressed": True, "source": "button"}])
         self.assertIn("button_4", press_times)
         self.assertEqual(press_times["button_4"], 10.0)
 
@@ -459,7 +466,8 @@ class ProtocolTests(unittest.TestCase):
             button_press_times=press_times,
             now=10.7,
         )
-        self.assertIn({"action": "CAA_ROTATE_CLOCKWISE", "pressed": False, "source": "button", "angle": 5}, release)
+        self.assertIn({"action": "CAA_ROTATE_CLOCKWISE", "pressed": False, "source": "button"}, release)
+        self.assertNotIn({"action": "CAA_ROTATE_ABORT", "pressed": False, "source": "button"}, release)
 
     def test_receiver_gui_settings_have_expected_defaults(self):
         defaults = receiver.load_gui_settings(path=Path("/tmp/does-not-exist.json"))
@@ -528,8 +536,8 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(expected_actions.issubset({event["action"] for event in mapping}))
         self.assertNotIn("FOCUS_STEP_UP", {event["action"] for event in mapping})
         self.assertNotIn("FOCUS_STEP_DOWN", {event["action"] for event in mapping})
-        self.assertNotIn("CAA_ROTATE_COUNTER_CLOCKWISE", {event["action"] for event in mapping})
-        self.assertNotIn("CAA_ROTATE_CLOCKWISE", {event["action"] for event in mapping})
+        self.assertIn("CAA_ROTATE_COUNTER_CLOCKWISE", {event["action"] for event in mapping})
+        self.assertIn("CAA_ROTATE_CLOCKWISE", {event["action"] for event in mapping})
 
     def test_action_mapping_can_be_defined_in_gui_settings(self):
         settings = {
