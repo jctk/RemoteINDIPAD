@@ -585,7 +585,7 @@ def _run_rotator_hold_loop(direction: str, driver_name: str, stop_event: threadi
     try:
         while not stop_event.is_set():
             state = read_rotator_state(driver_name)
-            if state == "ok":
+            if state != "busy":
                 rotation_count += 1
                 if rotation_count <= 5:
                     step_angle = sign * 1.0
