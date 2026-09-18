@@ -852,9 +852,7 @@ gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method o
 gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method org.kde.kstars.INDI.sendProperty "Rotator Simulator" "ROTATOR_ABORT_MOTION"
 ```
 
--------------------
-
-##### MOUNT
+## MOUNT
 
 ### MOUNT - インターフェース情報
 
