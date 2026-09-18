@@ -304,7 +304,8 @@ $ source venv/bin/activate
 
 - 送信側: CAA_ROTATE_CLOCKWISE または CAA_ROTATE_COUNTER_CLOCKWISE がマッピングされたボタンが押されたときと離されたときに CAA_ROTATE_CLOCKWISE または CAA_ROTATE_COUNTER_CLOCKWISE を送信する。
 - 受信側: CAA_ROTATER_CLOCKWISE/COUNTER_CLOCKWISE を受信し Pressed が true の場合にローテーターを回転させる。
-- 受信側: CAA_ROTATER_CLOCKWISE/COUNTER_CLOCKWISE を受信し Pressed が false の場合にローテーターを停止させる。
+- 受信側: CAA_ROTATER_CLOCKWISE/COUNTER_CLOCKWISE を受信し Pressed が false の場合にローテーターの回転ループを停止し、ローテーターの回転停止を実行する。
+- 受信側: Pressed が false になるまで、最初の5回の回転角は1度、6回目から8回目までは5度、9回目からは10度とする。
 - 受信側: Heartbeat が切れた場合はローテーターの回転を停止させる。
 
 | 抽象化操作名 | 動作 |

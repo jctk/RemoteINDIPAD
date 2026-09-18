@@ -135,6 +135,19 @@ def print_debug_json(label: str, value) -> None:
     print(f"{label}: {rendered}", flush=True)
 
 
+def _split_complete_json_lines(buffer: str) -> tuple[list[str], str]:
+    lines: list[str] = []
+    while True:
+        newline_index = buffer.find("\n")
+        if newline_index < 0:
+            break
+        line = buffer[:newline_index].strip()
+        buffer = buffer[newline_index + 1 :]
+        if line:
+            lines.append(line)
+    return lines, buffer
+
+
 class QueueLogHandler:
     def __init__(self):
         self._messages = queue.Queue()
@@ -160,6 +173,7 @@ def _debug_dispatch(label: str, action: str, pressed: bool, source: str) -> None
 
 ACTIVE_INDI_DEVICE_NAMES = {"mount": "", "focuser": "", "filter": "", "rotator": ""}
 _ROTATOR_HOLD_EVENTS: dict[str, threading.Event] = {}
+_ROTATOR_RELEASE_COUNTS: dict[str, int] = {}
 
 
 def stop_rotator_hold(direction: str | None = None) -> None:
@@ -566,11 +580,19 @@ def _run_rotator_hold_loop(direction: str, driver_name: str, stop_event: threadi
     if not driver_name:
         return
 
-    step_angle = 1.0 if direction == "CAA_ROTATE_CLOCKWISE" else -1.0
+    rotation_count = 0
+    sign = 1.0 if direction == "CAA_ROTATE_CLOCKWISE" else -1.0
     try:
         while not stop_event.is_set():
             state = read_rotator_state(driver_name)
             if state == "ok":
+                rotation_count += 1
+                if rotation_count <= 5:
+                    step_angle = sign * 1.0
+                elif rotation_count <= 8:
+                    step_angle = sign * 5.0
+                else:
+                    step_angle = sign * 10.0
                 executor(direction, step_angle, driver_name=driver_name)
             time.sleep(interval)
     finally:
@@ -1171,6 +1193,7 @@ def _start_rotator_hold(direction: str, target_name: str) -> None:
     if not target_name:
         return
     stop_rotator_hold(normalized)
+    _ROTATOR_RELEASE_COUNTS[normalized] = 0
     stop_event = threading.Event()
     _ROTATOR_HOLD_EVENTS[normalized] = stop_event
     thread = threading.Thread(
@@ -1181,6 +1204,21 @@ def _start_rotator_hold(direction: str, target_name: str) -> None:
     thread.start()
 
 
+def _start_rotator_abort_background(target_name: str | None = None) -> None:
+    driver_name = (target_name or get_active_indi_device("rotator") or "").strip()
+    if not driver_name:
+        return
+    thread = threading.Thread(target=execute_rotator_abort, args=(driver_name,), daemon=True)
+    thread.start()
+
+
+def _should_abort_rotator_release(direction: str) -> bool:
+    normalized = str(direction).upper()
+    previous = int(_ROTATOR_RELEASE_COUNTS.get(normalized, 0))
+    _ROTATOR_RELEASE_COUNTS[normalized] = previous + 1
+    return previous >= 1
+
+
 def handle_caa_rotate_counter_clockwise(pressed: bool, source: str = "button", angle: int | None = None) -> None:
     _debug_dispatch("CAA_ROTATE_COUNTER_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE", pressed, source)
     target_name = (get_active_indi_device("rotator") or "").strip()
@@ -1188,6 +1226,8 @@ def handle_caa_rotate_counter_clockwise(pressed: bool, source: str = "button", a
         _start_rotator_hold("CAA_ROTATE_COUNTER_CLOCKWISE", target_name)
         return
     stop_rotator_hold("CAA_ROTATE_COUNTER_CLOCKWISE")
+    if _should_abort_rotator_release("CAA_ROTATE_COUNTER_CLOCKWISE"):
+        _start_rotator_abort_background(target_name)
 
 
 def handle_caa_rotate_clockwise(pressed: bool, source: str = "button", angle: int | None = None) -> None:
@@ -1197,12 +1237,14 @@ def handle_caa_rotate_clockwise(pressed: bool, source: str = "button", angle: in
         _start_rotator_hold("CAA_ROTATE_CLOCKWISE", target_name)
         return
     stop_rotator_hold("CAA_ROTATE_CLOCKWISE")
+    if _should_abort_rotator_release("CAA_ROTATE_CLOCKWISE"):
+        _start_rotator_abort_background(target_name)
 
 
 def handle_caa_rotate_abort(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("CAA_ROTATE_ABORT", "CAA_ROTATE_ABORT", pressed, source)
     if not pressed:
-        execute_rotator_abort()
+        _start_rotator_abort_background()
 
 
 def handle_skymap_move(pressed: bool, source: str = "stick") -> None:
@@ -1320,6 +1362,7 @@ class Receiver:
                     conn.settimeout(0.5)
                     heartbeat_lost = False
                     last_seen = time.monotonic()
+                    recv_buffer = ""
                     while not self._stop_event.is_set():
                         try:
                             data = conn.recv(4096)
@@ -1330,7 +1373,7 @@ class Receiver:
                                         f"[receiver] heartbeat timeout: no valid message for {self.heartbeat_timeout:.1f}s"
                                     )
                                     stop_rotator_hold()
-                                    execute_rotator_abort()
+                                    _start_rotator_abort_background()
                                     heartbeat_lost = True
                             continue
                         except OSError:
@@ -1340,7 +1383,7 @@ class Receiver:
                                     flush=True,
                                 )
                                 stop_rotator_hold()
-                                execute_rotator_abort()
+                                _start_rotator_abort_background()
                                 heartbeat_lost = True
                             break
 
@@ -1351,14 +1394,13 @@ class Receiver:
                                     flush=True,
                                 )
                                 stop_rotator_hold()
-                                execute_rotator_abort()
+                                _start_rotator_abort_background()
                                 heartbeat_lost = True
                             break
 
-                        payload = data.decode("utf-8", errors="replace").strip()
-                        if not payload:
-                            continue
-                        for line in payload.splitlines():
+                        recv_buffer += data.decode("utf-8", errors="replace")
+                        lines, recv_buffer = _split_complete_json_lines(recv_buffer)
+                        for line in lines:
                             if not line.strip():
                                 continue
                             try:

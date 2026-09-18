@@ -501,6 +501,37 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn({"action": "CAA_ROTATE_CLOCKWISE", "pressed": False, "source": "button"}, release)
         self.assertNotIn({"action": "CAA_ROTATE_ABORT", "pressed": False, "source": "button"}, release)
 
+    def test_rotator_hold_uses_1_degree_then_5_degree_then_10_degree_steps(self):
+        stop_event = threading.Event()
+        calls = []
+
+        def fake_executor(direction, angle, driver_name=None):
+            calls.append(float(angle))
+            if len(calls) >= 9:
+                stop_event.set()
+
+        with patch.object(receiver, "read_rotator_state", return_value="ok"), patch.object(receiver, "stop_rotator_hold"):
+            receiver._run_rotator_hold_loop("CAA_ROTATE_CLOCKWISE", "rotator_driver", stop_event, interval=0, executor=fake_executor)
+
+        self.assertEqual(calls, [1.0, 1.0, 1.0, 1.0, 1.0, 5.0, 5.0, 5.0, 10.0])
+
+    def test_release_rotator_stop_stops_loop_and_aborts_motion(self):
+        calls = []
+
+        def fake_stop_rotator_hold(direction=None):
+            calls.append(("stop", direction))
+
+        def fake_abort(driver_name=None):
+            calls.append(("abort", driver_name))
+
+        with patch.object(receiver, "stop_rotator_hold", side_effect=fake_stop_rotator_hold), \
+             patch.object(receiver, "execute_rotator_abort", side_effect=fake_abort), \
+             patch.object(receiver, "get_active_indi_device", return_value="Rotator Simulator"):
+            receiver.handle_caa_rotate_clockwise(False)
+
+        self.assertIn(("stop", "CAA_ROTATE_CLOCKWISE"), calls)
+        self.assertIn(("abort", "Rotator Simulator"), calls)
+
     def test_receiver_gui_settings_have_expected_defaults(self):
         defaults = receiver.load_gui_settings(path=Path("/tmp/does-not-exist.json"))
         self.assertIn("mount", defaults)
