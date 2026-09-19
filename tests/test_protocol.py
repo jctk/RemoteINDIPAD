@@ -101,6 +101,104 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("FILTERWHEEL_PREV", sender.AVAILABLE_ACTIONS)
         self.assertIn("FILTERWHEEL_NEXT", sender.AVAILABLE_ACTIONS)
 
+    def test_empty_string_mapping_is_preserved(self):
+        resolved = sender._resolve_flat_action_mapping({"axis_4": ""})
+        self.assertEqual(resolved["axis_4"], "")
+
+    def test_action_mapping_store_omits_redundant_default_entry(self):
+        normalized = sender._normalize_action_mapping_store({
+            "controllers": [
+                {
+                    "name": "JC-U3712T",
+                    "guid": "abc",
+                    "mapping": {"axis_1": "SKYMAP_MOVE", "axis_2": "SKYMAP_MOVE"},
+                }
+            ]
+        }, controller_name="JC-U3712T", controller_guid="abc")
+        self.assertNotIn("default", normalized)
+        self.assertIn("controllers", normalized)
+        self.assertEqual(normalized["controllers"][0]["mapping"]["axis_1"], "SKYMAP_MOVE")
+
+    def test_gamepad_input_rows_follow_detected_axis_count(self):
+        class FakeJoy:
+            def get_name(self):
+                return "TestPad"
+
+            def get_numaxes(self):
+                return 2
+
+            def init(self):
+                return None
+
+        class FakeJoystickModule:
+            def get_init(self):
+                return True
+
+            def init(self):
+                return None
+
+            def get_count(self):
+                return 1
+
+            def Joystick(self, index):
+                return FakeJoy()
+
+        class FakePygame:
+            joystick = FakeJoystickModule()
+
+            @staticmethod
+            def get_init():
+                return True
+
+            @staticmethod
+            def init():
+                return None
+
+        original_pygame = sender.pygame
+        try:
+            sender.pygame = FakePygame()
+            rows = sender.get_gamepad_input_rows("TestPad")
+        finally:
+            sender.pygame = original_pygame
+
+        axis_labels = [label for label, key in rows if key.startswith("axis_")]
+        self.assertEqual(axis_labels, ["Axis 1", "Axis 2"])
+
+    def test_apply_mapping_preserves_other_controller_entries(self):
+        window = object.__new__(sender.IndipadWindow)
+        window.gui_settings = {
+            "controller": "JC-U3712T",
+            "controller_guid": "0300b561790000000600000000000000",
+            "host": "localhost",
+            "port": 50007,
+            "heartbeat": False,
+            "focus_step": 500,
+            "action_mapping": {
+                "default": {
+                    "axis_1": "SKYMAP_MOVE",
+                    "axis_2": "SKYMAP_MOVE",
+                    "axis_3": "SKYMAP_ROTATE",
+                    "axis_4": "SKYMAP_ZOOM",
+                    "axis_5": "",
+                    "axis_6": "",
+                },
+                "controllers": [
+                    {"name": "JC-U3712T", "guid": "0300b561790000000600000000000000", "mapping": {"axis_1": "SKYMAP_MOVE", "axis_2": "SKYMAP_MOVE", "axis_3": "SKYMAP_ROTATE", "axis_4": "SKYMAP_ZOOM", "axis_5": "", "axis_6": ""}},
+                    {"name": "Xbox One S Controller", "guid": "030082795e040000e002000000007200", "mapping": {"axis_1": "SKYMAP_MOVE", "axis_2": "SKYMAP_MOVE", "axis_3": "SKYMAP_ROTATE", "axis_4": "SKYMAP_ZOOM", "axis_5": "", "axis_6": ""}},
+                ],
+            },
+        }
+        class FakeCombo:
+            def currentText(self):
+                return "JC-U3712T"
+        window.controller_combo = FakeCombo()
+        window.save_settings = lambda: None
+
+        window._apply_mapping({"axis_1": "SKYMAP_MOVE", "axis_2": "SKYMAP_MOVE", "axis_3": "SKYMAP_ROTATE", "axis_4": "", "axis_5": "SKYMAP_ZOOM", "axis_6": ""})
+
+        self.assertEqual(len(window.gui_settings["action_mapping"]["controllers"]), 2)
+        self.assertEqual(window.gui_settings["action_mapping"]["controllers"][0]["mapping"]["axis_4"], "")
+
     def test_gui_settings_round_trip_includes_focus_step(self):
         settings = {
             "controller": "JC-U3712T",
@@ -226,8 +324,11 @@ class ProtocolTests(unittest.TestCase):
             def __init__(self):
                 self._hat = (1, 0)
 
+            def get_numaxes(self):
+                return 4
+
             def get_axis(self, index):
-                values = {0: 0.0, 1: 0.0, 2: 0.0, 4: 0.0}
+                values = {0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0}
                 return values.get(index, 0.0)
 
             def get_hat(self, index):
@@ -237,7 +338,7 @@ class ProtocolTests(unittest.TestCase):
                 return 0
 
         axes, buttons, dpad = sender.read_gamepad_state(FakeJoy())
-        self.assertEqual(axes["left_x"], 0.0)
+        self.assertEqual(axes["axis_1"], 0.0)
         self.assertTrue(dpad["dpad_right"])
         self.assertFalse(dpad.get("dpad_left", False))
         self.assertNotIn("dpad_right", buttons)
@@ -400,6 +501,27 @@ class ProtocolTests(unittest.TestCase):
             sender.select_device_profile(FakeJoy(), config, forced_device="ELECOM JC-U3712T"),
             config["profiles"]["ELECOM JC-U3712T"],
         )
+
+    def test_abstract_axis_names_are_used_instead_of_left_right_sticks(self):
+        class FakeJoy:
+            def get_numaxes(self):
+                return 4
+
+            def get_axis(self, index):
+                values = {0: 0.2, 1: -0.8, 2: 0.6, 3: -0.3}
+                return values.get(index, 0.0)
+
+            def get_numbuttons(self):
+                return 0
+
+        axes, buttons, dpad = sender.read_gamepad_state(FakeJoy(), {"axis_1": 0, "axis_2": 1, "axis_3": 2, "axis_4": 3})
+        self.assertEqual(sorted(axes), ["axis_1", "axis_2", "axis_3", "axis_4"])
+        self.assertAlmostEqual(axes["axis_1"], 0.2)
+        self.assertAlmostEqual(axes["axis_2"], -0.8)
+        self.assertAlmostEqual(axes["axis_3"], 0.6)
+        self.assertAlmostEqual(axes["axis_4"], -0.3)
+        self.assertEqual(buttons, {})
+        self.assertEqual(dpad, {})
 
     def test_resolve_gamepad_selection_by_name_or_index(self):
         names = ["DualSense Wireless Controller", "Xbox Controller"]

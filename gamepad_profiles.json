@@ -6,12 +6,6 @@
       "model": "JC-U3712T",
       "label": "ELECOM JC-U3712T",
       "description": "A gamepad manufactured by ELECOM. ",
-      "stick_axes": {
-        "left_x": 0,
-        "left_y": 1,
-        "right_x": 2,
-        "right_y": 4
-      },
       "action_mapping": {
         "dpad_up": "MOUNT_SOUTH",
         "dpad_down": "MOUNT_NORTH",
@@ -22,17 +16,18 @@
         "button_3": "CAA_ROTATE_COUNTER_CLOCKWISE",
         "button_4": "CAA_ROTATE_CLOCKWISE",
         "button_5": "MOUNT_STEP_UP",
-        "button_6": "FOCUS_OUT",
+        "button_6": "FOCUS_IN",
         "button_7": "MOUNT_STEP_DOWN",
-        "button_8": "FOCUS_IN",
+        "button_8": "FOCUS_OUT",
         "button_9": "MOUNT_STOP",
         "button_10": "FOCUS_STOP",
         "button_11": "FILTERWHEEL_PREV",
         "button_12": "FILTERWHEEL_NEXT",
-        "left_x": "SKYMAP_MOVE",
-        "left_y": "SKYMAP_MOVE",
-        "right_x": "SKYMAP_ROTATE",
-        "right_y": "SKYMAP_ZOOM"
+        "axis_1": "SKYMAP_MOVE",
+        "axis_2": "SKYMAP_MOVE",
+        "axis_3": "SKYMAP_ROTATE",
+        "axis_4": "",
+        "axis_5": "SKYMAP_ZOOM"
       }
     },
     "Xbox One S Controller": {
@@ -40,12 +35,6 @@
       "model": "Zero 2 - X-input",
       "label": "8BitDo Zero 2 - X-input",
       "description": "The Zero 2 controller by 8BitDo. Settings for use in X-Input mode.",
-      "stick_axes": {
-        "left_x": 0,
-        "left_y": 1,
-        "right_x": 2,
-        "right_y": 3
-      },
       "action_mapping": {
         "dpad_up": "MOUNT_SOUTH",
         "dpad_down": "MOUNT_NORTH",
@@ -63,10 +52,12 @@
         "button_10": "FOCUS_STOP",
         "button_11": "",
         "button_12": "",
-        "left_x": "SKYMAP_MOVE",
-        "left_y": "SKYMAP_MOVE",
-        "right_x": "SKYMAP_ROTATE",
-        "right_y": "SKYMAP_ZOOM"
+        "axis_1": "SKYMAP_MOVE",
+        "axis_2": "SKYMAP_MOVE",
+        "axis_3": "SKYMAP_ROTATE",
+        "axis_4": "SKYMAP_ZOOM",
+        "axis_5": "",
+        "axis_6": ""
       }
     },
     "default": {
@@ -74,12 +65,6 @@
       "model": "Default Gamepad",
       "label": "Default Gamepad",
       "description": "Default profile for unrecognized or generic gamepads. Basic settings for use with unknown models.",
-      "stick_axes": {
-        "left_x": 0,
-        "left_y": 1,
-        "right_x": 2,
-        "right_y": 3
-      },
       "action_mapping": {
         "dpad_up": "MOUNT_SOUTH",
         "dpad_down": "MOUNT_NORTH",
@@ -95,10 +80,12 @@
         "button_8": "FOCUS_OUT",
         "button_9": "MOUNT_STOP",
         "button_10": "FOCUS_STOP",
-        "left_x": "SKYMAP_MOVE",
-        "left_y": "SKYMAP_MOVE",
-        "right_x": "SKYMAP_ROTATE",
-        "right_y": "SKYMAP_ZOOM"
+        "axis_1": "SKYMAP_MOVE",
+        "axis_2": "SKYMAP_MOVE",
+        "axis_3": "SKYMAP_ROTATE",
+        "axis_4": "SKYMAP_ZOOM",
+        "axis_5": "",
+        "axis_6": ""
       }
     }
   }

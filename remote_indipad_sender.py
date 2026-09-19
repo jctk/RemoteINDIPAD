@@ -48,10 +48,12 @@ DEADZONE = 0.08
 _MODULE_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
 GUI_SETTINGS_PATH = _MODULE_DIR / "remote_indipad_sender.json"
 DEFAULT_AXIS_CONFIG = {
-    "left_x": 0,
-    "left_y": 1,
-    "right_x": 2,
-    "right_y": 4,
+    "axis_1": 0,
+    "axis_2": 1,
+    "axis_3": 2,
+    "axis_4": 3,
+    "axis_5": 4,
+    "axis_6": 5,
 }
 DEFAULT_ACTION_MAPPING = {
     "dpad_up": "MOUNT_SOUTH",
@@ -70,10 +72,12 @@ DEFAULT_ACTION_MAPPING = {
     "button_10": "FOCUS_STOP",
     "button_11": "FILTERWHEEL_PREV",
     "button_12": "FILTERWHEEL_NEXT",
-    "left_x": "SKYMAP_MOVE",
-    "left_y": "SKYMAP_MOVE",
-    "right_x": "SKYMAP_ROTATE",
-    "right_y": "SKYMAP_ZOOM",
+    "axis_1": "SKYMAP_MOVE",
+    "axis_2": "SKYMAP_MOVE",
+    "axis_3": "SKYMAP_ROTATE",
+    "axis_4": "SKYMAP_ZOOM",
+    "axis_5": "",
+    "axis_6": "",
 }
 AVAILABLE_ACTIONS = [
     "",
@@ -109,21 +113,76 @@ def get_device_guid(joy) -> str:
     return str(guid or "")
 
 
+def _axis_sort_key(axis_name: str):
+    if not isinstance(axis_name, str) or not axis_name.startswith("axis_"):
+        return (1, str(axis_name))
+    try:
+        return (0, int(axis_name.split("_", 1)[1]))
+    except ValueError:
+        return (1, str(axis_name))
+
+
+def _normalize_axis_config(axis_config):
+    if isinstance(axis_config, dict) and "stick_axes" in axis_config:
+        axis_config = axis_config["stick_axes"]
+
+    if not isinstance(axis_config, dict):
+        return DEFAULT_AXIS_CONFIG.copy()
+
+    normalized = {}
+    legacy_alias_map = {
+        "left_x": "axis_1",
+        "left_y": "axis_2",
+        "right_x": "axis_3",
+        "right_y": "axis_4",
+    }
+
+    for key, value in axis_config.items():
+        if not isinstance(key, str):
+            continue
+        if key.startswith("axis_"):
+            axis_key = key
+        else:
+            axis_key = legacy_alias_map.get(key, key)
+        if not axis_key.startswith("axis_"):
+            continue
+        try:
+            normalized[axis_key] = int(value)
+        except (TypeError, ValueError):
+            continue
+
+    if not normalized:
+        return DEFAULT_AXIS_CONFIG.copy()
+
+    max_axis_index = max(int(axis_name.split("_", 1)[1]) for axis_name in normalized)
+    for index in range(1, max_axis_index + 1):
+        standardized = f"axis_{index}"
+        normalized.setdefault(standardized, index - 1)
+
+    return {key: normalized[key] for key in sorted(normalized, key=_axis_sort_key)}
+
+
 def _resolve_flat_action_mapping(mapping: dict | None):
     resolved = DEFAULT_ACTION_MAPPING.copy()
     if not isinstance(mapping, dict):
         return resolved
 
+    legacy_action_alias_map = {
+        "left_x": "axis_1",
+        "left_y": "axis_2",
+        "right_x": "axis_3",
+        "right_y": "axis_4",
+    }
+
     for key, value in mapping.items():
         if not isinstance(key, str):
             continue
-        if not (key.startswith("dpad_") or key.startswith("button_") or key.startswith("left_") or key.startswith("right_")):
+        normalized_key = legacy_action_alias_map.get(key, key)
+        if not (normalized_key.startswith("dpad_") or normalized_key.startswith("button_") or normalized_key.startswith("axis_")):
             continue
         if not isinstance(value, str):
             continue
-        normalized = value.strip()
-        if normalized:
-            resolved[key] = normalized
+        resolved[normalized_key] = value.strip()
 
     for key, value in DEFAULT_ACTION_MAPPING.items():
         if key not in resolved:
@@ -139,6 +198,9 @@ def _normalize_action_mapping_store(raw_mapping, controller_name: str | None = N
     if isinstance(raw_mapping, dict) and ("controllers" in raw_mapping or "entries" in raw_mapping):
         container = raw_mapping.get("controllers", raw_mapping.get("entries", []))
         entries = []
+        selected_default_mapping = get_default_action_mapping(normalized_name or None, load_axis_config())
+        matched_selected = False
+
         if isinstance(container, list):
             for entry in container:
                 if not isinstance(entry, dict):
@@ -146,36 +208,49 @@ def _normalize_action_mapping_store(raw_mapping, controller_name: str | None = N
                 entry_name = str(entry.get("name", "")).strip()
                 entry_guid = str(entry.get("guid", "")).strip()
                 mapping_value = entry.get("mapping") if isinstance(entry.get("mapping"), dict) else entry
+                resolved_mapping = _resolve_flat_action_mapping(mapping_value)
+
+                if normalized_name and normalized_guid:
+                    matches_selected = entry_name == normalized_name and entry_guid == normalized_guid
+                elif normalized_name:
+                    matches_selected = entry_name == normalized_name
+                elif normalized_guid:
+                    matches_selected = entry_guid == normalized_guid
+                else:
+                    matches_selected = False
+
+                if matches_selected:
+                    matched_selected = True
+                    entries.append({
+                        "name": normalized_name or entry_name,
+                        "guid": normalized_guid or entry_guid,
+                        "mapping": resolved_mapping,
+                    })
+                    continue
+
                 entries.append({
                     "name": entry_name,
                     "guid": entry_guid,
-                    "mapping": _resolve_flat_action_mapping(mapping_value),
+                    "mapping": resolved_mapping,
                 })
 
-        current_mapping = _resolve_flat_action_mapping(raw_mapping.get("default") if isinstance(raw_mapping.get("default"), dict) else DEFAULT_ACTION_MAPPING.copy())
         if normalized_name or normalized_guid:
-            entries = [entry for entry in entries if not (str(entry.get("name", "")).strip() == normalized_name and str(entry.get("guid", "")).strip() == normalized_guid)]
-            entries.append({
-                "name": normalized_name,
-                "guid": normalized_guid,
-                "mapping": current_mapping,
-            })
-        default_mapping = raw_mapping.get("default") if isinstance(raw_mapping.get("default"), dict) else DEFAULT_ACTION_MAPPING.copy()
-        return {
-            "default": _resolve_flat_action_mapping(default_mapping),
-            "controllers": entries,
-        }
+            if not matched_selected:
+                entries.append({
+                    "name": normalized_name,
+                    "guid": normalized_guid,
+                    "mapping": selected_default_mapping,
+                })
+
+        return {"controllers": entries}
 
     if isinstance(raw_mapping, dict) and isinstance(raw_mapping.get("mapping"), dict) and "name" in raw_mapping and "guid" in raw_mapping:
         current_mapping = _resolve_flat_action_mapping(raw_mapping.get("mapping"))
-        return {
-            "default": _resolve_flat_action_mapping(raw_mapping.get("default") if isinstance(raw_mapping.get("default"), dict) else current_mapping),
-            "controllers": [{
-                "name": str(raw_mapping.get("name", "")).strip(),
-                "guid": str(raw_mapping.get("guid", "")).strip(),
-                "mapping": current_mapping,
-            }],
-        }
+        return {"controllers": [{
+            "name": str(raw_mapping.get("name", "")).strip(),
+            "guid": str(raw_mapping.get("guid", "")).strip(),
+            "mapping": current_mapping,
+        }]}
 
     current_mapping = _resolve_flat_action_mapping(raw_mapping)
     containers = []
@@ -218,10 +293,7 @@ def resolve_action_mapping(source: dict | None = None, device_name: str | None =
                 if name_match and guid_match:
                     mapping = entry.get("mapping")
                     return _resolve_flat_action_mapping(mapping)
-            default_mapping = candidate.get("default")
-            if isinstance(default_mapping, dict):
-                return _resolve_flat_action_mapping(default_mapping)
-            return resolved
+            return get_default_action_mapping(normalized_name or None, load_axis_config())
 
     if "name" in candidate and "guid" in candidate and isinstance(candidate.get("mapping"), dict):
         normalized_name = str(device_name or "").strip()
@@ -291,11 +363,31 @@ def get_gamepad_input_rows(selected_device: str | None = None):
         ("Button 10", "button_10"),
         ("Button 11", "button_11"),
         ("Button 12", "button_12"),
-        ("Left Stick X", "left_x"),
-        ("Left Stick Y", "left_y"),
-        ("Right Stick X", "right_x"),
-        ("Right Stick Y", "right_y"),
     ]
+
+    axis_count = 0
+    if selected_device:
+        try:
+            if pygame is not None and getattr(pygame, "get_init", lambda: False)():
+                pygame.joystick.init()
+                for idx in range(int(getattr(pygame.joystick, "get_count", lambda: 0)())):
+                    joy = pygame.joystick.Joystick(idx)
+                    joy.init()
+                    if str(get_device_name(joy)).lower() == str(selected_device).lower():
+                        axis_count = max(axis_count, int(getattr(joy, "get_numaxes", lambda: 0)()))
+                        break
+        except Exception:
+            axis_count = 0
+
+    if axis_count <= 0:
+        config = load_axis_config()
+        mapping = get_default_action_mapping(selected_device, config)
+        axis_count = max(
+            [int(key.split("_", 1)[1]) for key in mapping if isinstance(key, str) and key.startswith("axis_")],
+            default=6,
+        )
+
+    rows.extend((f"Axis {index}", f"axis_{index}") for index in range(1, axis_count + 1))
 
     if selected_device is None:
         return rows
@@ -328,7 +420,7 @@ def load_gui_settings(path: str | Path | None = None):
         "port": 50007,
         "heartbeat": False,
         "focus_step": 100,
-        "action_mapping": {"default": DEFAULT_ACTION_MAPPING.copy(), "controllers": []},
+        "action_mapping": {"controllers": []},
     }
 
     if not config_path.exists():
@@ -355,7 +447,7 @@ def load_gui_settings(path: str | Path | None = None):
     except (TypeError, ValueError):
         port_value = 50007
 
-    raw_mapping = loaded.get("action_mapping", DEFAULT_ACTION_MAPPING.copy())
+    raw_mapping = loaded.get("action_mapping", {"controllers": []})
     normalized_mapping = _normalize_action_mapping_store(raw_mapping, controller_name=str(controller or ""), controller_guid=str(controller_guid or ""))
 
     return {
@@ -373,7 +465,7 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
     config_path = Path(path) if path is not None else GUI_SETTINGS_PATH
     controller_name = str(settings.get("controller", "") or "")
     controller_guid = str(settings.get("controller_guid", "") or "")
-    raw_mapping = settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy())
+    raw_mapping = settings.get("action_mapping", {"controllers": []})
     payload = {
         "controller": controller_name,
         "controller_guid": controller_guid,
@@ -395,6 +487,12 @@ def load_axis_config(path: str | Path | None = None):
     else:
         config_path = (_MODULE_DIR / "gamepad_profiles.json")
     config = {"default_device": "", "profiles": {}}
+
+    def synthesize_stick_axes(profile_name: str | None = None):
+        name = str(profile_name or "").lower()
+        if "jc-u3712t" in name or "elecom" in name:
+            return _normalize_axis_config({"axis_1": 0, "axis_2": 1, "axis_3": 2, "axis_4": 4, "axis_5": 5, "axis_6": 6})
+        return _normalize_axis_config(DEFAULT_AXIS_CONFIG.copy())
 
     if not config_path.exists():
         config["profiles"]["default"] = {"stick_axes": DEFAULT_AXIS_CONFIG.copy()}
@@ -418,23 +516,17 @@ def load_axis_config(path: str | Path | None = None):
         for profile_name, profile_data in profiles.items():
             if not isinstance(profile_data, dict):
                 continue
+            preserved = {key: value for key, value in profile_data.items() if key != "stick_axes"}
             stick_axes = profile_data.get("stick_axes")
-            if not isinstance(stick_axes, dict):
-                continue
-            axis_map = DEFAULT_AXIS_CONFIG.copy()
-            for key in axis_map:
-                value = stick_axes.get(key)
-                if isinstance(value, int):
-                    axis_map[key] = value
-            config["profiles"][str(profile_name)] = {"stick_axes": axis_map}
+            if isinstance(stick_axes, dict):
+                preserved["stick_axes"] = _normalize_axis_config(stick_axes)
+            else:
+                preserved["stick_axes"] = synthesize_stick_axes(str(profile_name))
+            config["profiles"][str(profile_name)] = preserved
 
     legacy_axes = loaded.get("stick_axes")
     if isinstance(legacy_axes, dict):
-        axis_map = DEFAULT_AXIS_CONFIG.copy()
-        for key in axis_map:
-            value = legacy_axes.get(key)
-            if isinstance(value, int):
-                axis_map[key] = value
+        axis_map = _normalize_axis_config(legacy_axes)
         default_name = config["default_device"] or "default"
         config["profiles"][default_name] = {"stick_axes": axis_map}
 
@@ -462,7 +554,10 @@ def select_device_profile(joy, config=None, forced_device: str | None = None):
             return profile_map[device_name]
         lower_name = device_name.lower()
         for profile_name, profile_data in profile_map.items():
-            if str(profile_name).lower() == lower_name:
+            profile_key = str(profile_name)
+            if profile_key.lower() == lower_name:
+                return profile_data
+            if lower_name in profile_key.lower() or profile_key.lower() in lower_name:
                 return profile_data
 
     default_device = str(loaded.get("default_device", "")).strip()
@@ -471,6 +566,8 @@ def select_device_profile(joy, config=None, forced_device: str | None = None):
     if default_device:
         for profile_name, profile_data in profile_map.items():
             if str(profile_name).lower() == default_device.lower():
+                return profile_data
+            if default_device.lower() in str(profile_name).lower() or str(profile_name).lower() in default_device.lower():
                 return profile_data
 
     if "default" in profile_map:
@@ -766,30 +863,34 @@ def init_gamepad(selected_device: str | None = None):
 
 
 def resolve_right_stick_axes(joy, axis_config=None):
-    config = axis_config if axis_config is not None else DEFAULT_AXIS_CONFIG.copy()
-    if isinstance(config, dict) and "stick_axes" in config:
-        config = config["stick_axes"]
-
-    x_axis = int(config.get("right_x", DEFAULT_AXIS_CONFIG["right_x"]))
-    y_axis = int(config.get("right_y", DEFAULT_AXIS_CONFIG["right_y"]))
-
-    x_value = float(joy.get_axis(x_axis))
-    y_value = float(joy.get_axis(y_axis))
-
-    return x_value, y_value
+    if axis_config is None:
+        try:
+            device_profile = select_device_profile(joy, load_axis_config())
+            config = _normalize_axis_config(device_profile.get("stick_axes", DEFAULT_AXIS_CONFIG.copy()))
+        except Exception:
+            config = _normalize_axis_config(DEFAULT_AXIS_CONFIG.copy())
+    else:
+        config = _normalize_axis_config(axis_config)
+    x_axis = int(config.get("axis_3", 2))
+    y_axis = int(config.get("axis_4", 3))
+    return float(joy.get_axis(x_axis)), float(joy.get_axis(y_axis))
 
 
 def read_gamepad_state(joy, axis_config=None):
-    config = axis_config if axis_config is not None else DEFAULT_AXIS_CONFIG.copy()
-    if isinstance(config, dict) and "stick_axes" in config:
-        config = config["stick_axes"]
+    config = _normalize_axis_config(axis_config)
 
     if pygame is not None and getattr(pygame, "get_init", lambda: False)():
         pygame.event.pump()
 
-    left_x = joy.get_axis(int(config.get("left_x", DEFAULT_AXIS_CONFIG["left_x"])))
-    left_y = joy.get_axis(int(config.get("left_y", DEFAULT_AXIS_CONFIG["left_y"])))
-    right_x, right_y = resolve_right_stick_axes(joy, config)
+    max_axis_count = max(
+        int(getattr(joy, "get_numaxes", lambda: 0)()),
+        max((int(axis_name.split("_", 1)[1]) for axis_name in config if axis_name.startswith("axis_")), default=0),
+    )
+    axes = {}
+    for index in range(1, max_axis_count + 1):
+        axis_name = f"axis_{index}"
+        physical_index = int(config.get(axis_name, index - 1))
+        axes[axis_name] = float(joy.get_axis(physical_index))
 
     buttons = {}
     for i in range(min(12, joy.get_numbuttons())):
@@ -809,33 +910,28 @@ def read_gamepad_state(joy, axis_config=None):
         dpad["dpad_left"] = hat_x == -1
         dpad["dpad_right"] = hat_x == 1
 
-    return {
-        "left_x": left_x,
-        "left_y": left_y,
-        "right_x": right_x,
-        "right_y": right_y,
-    }, buttons, dpad
+    return axes, buttons, dpad
 
 
 def demo_axes_state(step: int):
     phase = step % 16
     values = {
-        0: {"left_x": 0.0, "left_y": 0.0, "right_x": 0.0, "right_y": 0.0},
-        1: {"left_x": 0.25, "left_y": -0.15, "right_x": 0.0, "right_y": 0.2},
-        2: {"left_x": 0.5, "left_y": -0.35, "right_x": 0.1, "right_y": 0.4},
-        3: {"left_x": 0.75, "left_y": -0.5, "right_x": 0.25, "right_y": 0.6},
-        4: {"left_x": 1.0, "left_y": -0.9, "right_x": 0.35, "right_y": 0.8},
-        5: {"left_x": 0.75, "left_y": -0.5, "right_x": 0.2, "right_y": 0.6},
-        6: {"left_x": 0.5, "left_y": -0.2, "right_x": 0.1, "right_y": 0.3},
-        7: {"left_x": 0.2, "left_y": 0.1, "right_x": 0.0, "right_y": 0.0},
-        8: {"left_x": 0.0, "left_y": 0.0, "right_x": 0.0, "right_y": 0.0},
-        9: {"left_x": -0.2, "left_y": 0.1, "right_x": -0.1, "right_y": -0.2},
-        10: {"left_x": -0.5, "left_y": 0.3, "right_x": -0.2, "right_y": -0.4},
-        11: {"left_x": -0.75, "left_y": 0.5, "right_x": -0.3, "right_y": -0.6},
-        12: {"left_x": -1.0, "left_y": 0.9, "right_x": -0.4, "right_y": -0.8},
-        13: {"left_x": -0.75, "left_y": 0.5, "right_x": -0.3, "right_y": -0.6},
-        14: {"left_x": -0.5, "left_y": 0.2, "right_x": -0.1, "right_y": -0.3},
-        15: {"left_x": -0.2, "left_y": 0.1, "right_x": 0.0, "right_y": 0.0},
+        0: {"axis_1": 0.0, "axis_2": 0.0, "axis_3": 0.0, "axis_4": 0.0},
+        1: {"axis_1": 0.25, "axis_2": -0.15, "axis_3": 0.0, "axis_4": 0.2},
+        2: {"axis_1": 0.5, "axis_2": -0.35, "axis_3": 0.1, "axis_4": 0.4},
+        3: {"axis_1": 0.75, "axis_2": -0.5, "axis_3": 0.25, "axis_4": 0.6},
+        4: {"axis_1": 1.0, "axis_2": -0.9, "axis_3": 0.35, "axis_4": 0.8},
+        5: {"axis_1": 0.75, "axis_2": -0.5, "axis_3": 0.2, "axis_4": 0.6},
+        6: {"axis_1": 0.5, "axis_2": -0.2, "axis_3": 0.1, "axis_4": 0.3},
+        7: {"axis_1": 0.2, "axis_2": 0.1, "axis_3": 0.0, "axis_4": 0.0},
+        8: {"axis_1": 0.0, "axis_2": 0.0, "axis_3": 0.0, "axis_4": 0.0},
+        9: {"axis_1": -0.2, "axis_2": 0.1, "axis_3": -0.1, "axis_4": -0.2},
+        10: {"axis_1": -0.5, "axis_2": 0.3, "axis_3": -0.2, "axis_4": -0.4},
+        11: {"axis_1": -0.75, "axis_2": 0.5, "axis_3": -0.3, "axis_4": -0.6},
+        12: {"axis_1": -1.0, "axis_2": 0.9, "axis_3": -0.4, "axis_4": -0.8},
+        13: {"axis_1": -0.75, "axis_2": 0.5, "axis_3": -0.3, "axis_4": -0.6},
+        14: {"axis_1": -0.5, "axis_2": 0.2, "axis_3": -0.1, "axis_4": -0.3},
+        15: {"axis_1": -0.2, "axis_2": 0.1, "axis_3": 0.0, "axis_4": 0.0},
     }
     return values[phase % 16]
 
@@ -1231,7 +1327,57 @@ class IndipadWindow(QMainWindow):
         editor.raise_()
 
     def _apply_mapping(self, mapping: dict):
-        self.gui_settings["action_mapping"] = resolve_action_mapping(mapping)
+        combo = getattr(self, "controller_combo", None)
+        selected_device = combo.currentText() if combo is not None else self.gui_settings.get("controller", "")
+        selected_guid = str(self.gui_settings.get("controller_guid", "") or "")
+        if selected_device and selected_device not in {"No controller found", "Controller unavailable"}:
+            try:
+                import pygame as gui_pygame
+                if not gui_pygame.get_init():
+                    gui_pygame.init()
+                if not gui_pygame.joystick.get_init():
+                    gui_pygame.joystick.init()
+                for index in range(gui_pygame.joystick.get_count()):
+                    joy = gui_pygame.joystick.Joystick(index)
+                    joy.init()
+                    if get_device_name(joy) == selected_device:
+                        selected_guid = get_device_guid(joy)
+                        break
+            except Exception:
+                pass
+
+        current_mapping = self.gui_settings.get("action_mapping", {"controllers": []})
+        if not isinstance(current_mapping, dict):
+            current_mapping = {"controllers": []}
+
+        next_payload = {"controllers": []}
+
+        selected_entry = {
+            "name": selected_device or "",
+            "guid": selected_guid,
+            "mapping": _resolve_flat_action_mapping(mapping),
+        }
+
+        found = False
+        for entry in current_mapping.get("controllers", []):
+            if not isinstance(entry, dict):
+                continue
+            name_match = str(entry.get("name", "")).strip() == str(selected_device or "").strip()
+            guid_match = str(entry.get("guid", "")).strip() == str(selected_guid or "").strip()
+            if name_match and guid_match:
+                next_payload["controllers"].append(selected_entry)
+                found = True
+            else:
+                next_payload["controllers"].append(entry)
+
+        if not found and (selected_device or selected_guid):
+            next_payload["controllers"].append(selected_entry)
+
+        self.gui_settings["action_mapping"] = _normalize_action_mapping_store(
+            next_payload,
+            controller_name=selected_device,
+            controller_guid=selected_guid,
+        )
         self.save_settings()
 
     def refresh_controllers(self):
@@ -1291,7 +1437,7 @@ class IndipadWindow(QMainWindow):
             "port": port,
             "heartbeat": self.heartbeat_checkbox.isChecked(),
             "focus_step": self.focus_step_spin.value(),
-            "action_mapping": self.gui_settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy()),
+            "action_mapping": self.gui_settings.get("action_mapping", {"controllers": []}),
         }
         self.gui_settings["action_mapping"] = _normalize_action_mapping_store(
             self.gui_settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy()),
@@ -1347,8 +1493,17 @@ class MappingEditorWindow(QMainWindow):
         self.selected_device = selected_device
         config = load_axis_config()
         self.mapping = get_default_action_mapping(selected_device, config)
+        parent_settings = getattr(parent, "gui_settings", {}) if parent is not None else {}
+        parent_guid = str(parent_settings.get("controller_guid", "") or "")
         if isinstance(mapping, dict):
-            self.mapping = resolve_action_mapping(mapping)
+            resolved = resolve_action_mapping(mapping, device_name=selected_device, device_guid=parent_guid)
+            self.mapping = resolved
+        elif isinstance(parent_settings.get("action_mapping", None), dict):
+            self.mapping = resolve_action_mapping(
+                parent_settings.get("action_mapping"),
+                device_name=selected_device,
+                device_guid=parent_guid,
+            )
 
         central = QWidget(self)
         self.setCentralWidget(central)
@@ -1413,7 +1568,10 @@ class MappingEditorWindow(QMainWindow):
         next_mapping = {}
         for key, combo in self.input_rows.items():
             value = combo.currentText().strip()
-            if value and value != "Unassigned":
+            if value == "Unassigned":
+                next_mapping[key] = ""
+                continue
+            if value:
                 next_mapping[key] = value
         self.mapping = resolve_action_mapping(next_mapping)
         self.mapping_applied.emit(self.mapping)
