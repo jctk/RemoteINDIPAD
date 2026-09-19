@@ -71,6 +71,8 @@ def enable_windows_vt100() -> None:
         pass
 
 
+enable_windows_vt100()
+
 
 def clear_console() -> None:
     if os.name == "nt":
@@ -82,6 +84,8 @@ def clear_console() -> None:
     else:
         print("\033[2J\033[H", end="", flush=True)
 
+
+clear_console()
 
 
 def _normalize_json_for_display(value):
