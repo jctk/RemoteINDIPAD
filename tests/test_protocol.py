@@ -532,6 +532,30 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn(("stop", "CAA_ROTATE_CLOCKWISE"), calls)
         self.assertIn(("abort", "Rotator Simulator"), calls)
 
+    def test_sender_disconnect_event_resets_button_state(self):
+        class FakeButton:
+            def __init__(self):
+                self.text = "Disconnect"
+                self.stylesheet = ""
+
+            def setText(self, text):
+                self.text = text
+
+            def setStyleSheet(self, stylesheet):
+                self.stylesheet = stylesheet
+
+        window = sender.IndipadWindow.__new__(sender.IndipadWindow)
+        window.connection_button = FakeButton()
+        window.worker = object()
+
+        window._handle_connection_update("Disconnected")
+        self.assertEqual(window.connection_button.text, "Connect")
+        self.assertIsNone(window.worker)
+
+        window.worker = object()
+        window._handle_connection_update("Connected: Test Controller")
+        self.assertEqual(window.connection_button.text, "Disconnect")
+
     def test_receiver_gui_settings_have_expected_defaults(self):
         defaults = receiver.load_gui_settings(path=Path("/tmp/does-not-exist.json"))
         self.assertIn("mount", defaults)

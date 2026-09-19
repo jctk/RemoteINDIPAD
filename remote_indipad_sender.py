@@ -1051,6 +1051,27 @@ class IndipadWindow(QMainWindow):
         self.connection_button.setText("Disconnect" if connected else "Connect")
         self.connection_button.setStyleSheet("QPushButton { font-weight: bold; }" if connected else "")
 
+    def _handle_connection_update(self, text: str):
+        normalized = str(text or "").strip()
+        if not normalized:
+            return
+
+        if normalized.lower().startswith("connected") or normalized.lower().startswith("ready"):
+            self.set_connection_button_state(True)
+            return
+
+        if normalized.lower().startswith("error:") or normalized.lower() == "disconnected":
+            self.set_connection_button_state(False)
+            self.worker = None
+            return
+
+        if "disconnected" in normalized.lower():
+            self.set_connection_button_state(False)
+            self.worker = None
+            return
+
+        self.set_connection_button_state(False)
+
     def on_toggle_connection(self):
         if self.worker is None:
             self.on_connect()
@@ -1125,6 +1146,7 @@ class IndipadWindow(QMainWindow):
         )
         self.worker.status_changed.connect(lambda text: self.log(f"[gui] status: {text}"))
         self.worker.log_received.connect(self.handle_log_message)
+        self.worker.connection_changed.connect(self._handle_connection_update)
         self.worker.connection_changed.connect(lambda text: self.log(f"[gui] {text}"))
 
         self.worker_thread = threading.Thread(target=self.worker.run, daemon=True)
