@@ -553,7 +553,8 @@ class ProtocolTests(unittest.TestCase):
             {},
             previous_dpad={"dpad_down": True},
         )
-        self.assertIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
+        self.assertIn({"action": "MOUNT_NORTH", "pressed": False, "source": "dpad"}, mapping)
+        self.assertNotIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
 
     def test_dpad_stop_is_emitted_only_after_all_directions_are_released(self):
         mapping = sender.build_action_events(
@@ -562,6 +563,7 @@ class ProtocolTests(unittest.TestCase):
             previous_dpad={"dpad_up": True, "dpad_left": False, "dpad_right": False, "dpad_down": False},
         )
         self.assertNotIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
+        self.assertIn({"action": "MOUNT_SOUTH", "pressed": False, "source": "dpad"}, mapping)
         self.assertIn({"action": "MOUNT_WEST", "pressed": True, "source": "dpad"}, mapping)
 
         mapping = sender.build_action_events(
@@ -569,7 +571,8 @@ class ProtocolTests(unittest.TestCase):
             {},
             previous_dpad={"dpad_up": False, "dpad_left": True, "dpad_right": False, "dpad_down": False},
         )
-        self.assertIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
+        self.assertIn({"action": "MOUNT_WEST", "pressed": False, "source": "dpad"}, mapping)
+        self.assertNotIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
 
     def test_policy_button_mapping_matches_documented_gamepad_layout(self):
         mapping = sender.build_action_events(

@@ -488,9 +488,6 @@ def build_action_events(
         focus_step_state["value"] = current_focus_step
 
     dpad_names = ("dpad_up", "dpad_down", "dpad_left", "dpad_right")
-    any_dpad_pressed = any(bool(dpad.get(name)) for name in dpad_names)
-    previous_any_dpad_pressed = any(bool(previous_dpad.get(name)) for name in dpad_names)
-
     def advance_step(direction: str) -> int:
         nonlocal current_focus_step
         step_sequence = [5, 10, 50, 100, 500]
@@ -514,10 +511,8 @@ def build_action_events(
         current_pressed = bool(dpad.get(name))
         previous_pressed = bool(previous_dpad.get(name))
         if current_pressed != previous_pressed:
-            if current_pressed:
-                events.append({"action": resolved_map.get(name, DEFAULT_ACTION_MAPPING.get(name, name)), "pressed": True, "source": "dpad"})
-            elif not any_dpad_pressed and previous_any_dpad_pressed:
-                events.append({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"})
+            action_name = resolved_map.get(name, DEFAULT_ACTION_MAPPING.get(name, name))
+            events.append({"action": action_name, "pressed": current_pressed, "source": "dpad"})
 
     for key, action in resolved_map.items():
         if not key.startswith("button_"):
