@@ -101,7 +101,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("FILTERWHEEL_PREV", sender.AVAILABLE_ACTIONS)
         self.assertIn("FILTERWHEEL_NEXT", sender.AVAILABLE_ACTIONS)
 
-    def test_gui_settings_round_trip_includes_focus_step(self):
+    def test_gui_settings_round_trip_ignores_legacy_focus_step(self):
         settings = {
             "controller": "JC-U3712T",
             "host": "localhost",
@@ -114,7 +114,8 @@ class ProtocolTests(unittest.TestCase):
         try:
             sender.save_gui_settings(settings, path)
             loaded = sender.load_gui_settings(path)
-            self.assertEqual(loaded["focus_step"], 250)
+            self.assertNotIn("focus_step", loaded)
+            self.assertEqual(loaded["action_mapping"]["button_1"], "FOCUSER_STEP_UP")
         finally:
             if path.exists():
                 path.unlink()
@@ -413,20 +414,20 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(payload["pressed"])
         self.assertEqual(payload["source"], "dpad")
 
-    def test_focus_actions_include_current_step_and_step_buttons_stay_local(self):
+    def test_focus_step_buttons_use_receiver_side_actions(self):
         focus_events = sender.build_action_events(
             {},
             {"button_1": True, "button_6": True},
             {},
             {},
-            action_map={"button_1": "FOCUS_STEP_UP", "button_6": "FOCUS_IN"},
-            focus_step=250,
+            action_map={"button_1": "FOCUSER_STEP_UP", "button_6": "FOCUS_IN"},
         )
-        self.assertNotIn({"action": "FOCUS_STEP_UP", "pressed": True, "source": "button"}, focus_events)
-        self.assertIn({"action": "FOCUS_IN", "pressed": True, "source": "button", "step": 250}, focus_events)
+        self.assertIn({"action": "FOCUSER_STEP_UP", "pressed": True, "source": "button"}, focus_events)
+        self.assertIn({"action": "FOCUS_IN", "pressed": True, "source": "button"}, focus_events)
+        self.assertNotIn({"action": "FOCUS_IN", "pressed": True, "source": "button", "step": 250}, focus_events)
 
-        payload = protocol.build_action_payload(action="FOCUS_IN", pressed=True, source="button", step=250)
-        self.assertEqual(payload["step"], 250)
+        payload = protocol.build_action_payload(action="FOCUS_IN", pressed=True, source="button")
+        self.assertNotIn("step", payload)
 
     def test_validate_message_accepts_action_payload(self):
         payload = {

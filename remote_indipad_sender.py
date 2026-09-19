@@ -58,8 +58,8 @@ DEFAULT_ACTION_MAPPING = {
     "dpad_down": "MOUNT_NORTH",
     "dpad_left": "MOUNT_WEST",
     "dpad_right": "MOUNT_EAST",
-    "button_1": "FOCUS_STEP_UP",
-    "button_2": "FOCUS_STEP_DOWN",
+    "button_1": "FOCUSER_STEP_UP",
+    "button_2": "FOCUSER_STEP_DOWN",
     "button_3": "CAA_ROTATE_COUNTER_CLOCKWISE",
     "button_4": "CAA_ROTATE_CLOCKWISE",
     "button_5": "MOUNT_STEP_UP",
@@ -86,8 +86,8 @@ AVAILABLE_ACTIONS = [
     "MOUNT_STOP",
     "FOCUS_IN",
     "FOCUS_OUT",
-    "FOCUS_STEP_UP",
-    "FOCUS_STEP_DOWN",
+    "FOCUSER_STEP_UP",
+    "FOCUSER_STEP_DOWN",
     "FOCUS_STOP",
     "FILTERWHEEL_PREV",
     "FILTERWHEEL_NEXT",
@@ -100,6 +100,11 @@ AVAILABLE_ACTIONS = [
 
 _DEBUG_JSON_CURSOR_SAVED = False
 _DEBUG_JSON_LAST_LINES = 0
+
+_LEGACY_ACTION_ALIASES = {
+    "FOCUS_STEP_UP": "FOCUSER_STEP_UP",
+    "FOCUS_STEP_DOWN": "FOCUSER_STEP_DOWN",
+}
 
 
 def resolve_action_mapping(source: dict | None = None):
@@ -120,7 +125,7 @@ def resolve_action_mapping(source: dict | None = None):
             continue
         normalized = value.strip()
         if normalized:
-            resolved[key] = normalized
+            resolved[key] = _LEGACY_ACTION_ALIASES.get(normalized, normalized)
 
     for key, value in DEFAULT_ACTION_MAPPING.items():
         if key not in resolved:
@@ -215,7 +220,7 @@ def _clamp_focus_step(value: object, default: int = 100) -> int:
 
 def load_gui_settings(path: str | Path | None = None):
     config_path = Path(path) if path is not None else GUI_SETTINGS_PATH
-    defaults = {"controller": "", "host": "localhost", "port": 50007, "heartbeat": False, "focus_step": 100, "action_mapping": DEFAULT_ACTION_MAPPING.copy()}
+    defaults = {"controller": "", "host": "localhost", "port": 50007, "heartbeat": False, "action_mapping": DEFAULT_ACTION_MAPPING.copy()}
 
     if not config_path.exists():
         return defaults.copy()
@@ -233,8 +238,6 @@ def load_gui_settings(path: str | Path | None = None):
     host = loaded.get("host", "localhost")
     port = loaded.get("port", 50007)
     heartbeat = loaded.get("heartbeat", False)
-    focus_step = _clamp_focus_step(loaded.get("focus_step", 100), default=100)
-
     try:
         port_value = int(port)
     except (TypeError, ValueError):
@@ -245,7 +248,6 @@ def load_gui_settings(path: str | Path | None = None):
         "host": str(host) if host is not None else "localhost",
         "port": port_value,
         "heartbeat": bool(heartbeat),
-        "focus_step": focus_step,
         "action_mapping": resolve_action_mapping(loaded),
     }
 
@@ -257,7 +259,6 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         "host": str(settings.get("host", "localhost") or "localhost"),
         "port": int(settings.get("port", 50007) or 50007),
         "heartbeat": bool(settings.get("heartbeat", False)),
-        "focus_step": _clamp_focus_step(settings.get("focus_step", 100), default=100),
         "action_mapping": resolve_action_mapping(settings.get("action_mapping", {})),
     }
 
@@ -373,8 +374,6 @@ def enable_windows_vt100() -> None:
         pass
 
 
-enable_windows_vt100()
-
 
 def clear_console() -> None:
     if os.name == "nt":
@@ -386,8 +385,6 @@ def clear_console() -> None:
     else:
         print("\033[2J\033[H", end="", flush=True)
 
-
-clear_console()
 
 
 def _normalize_json_for_display(value):
@@ -482,31 +479,8 @@ def build_action_events(
     now = time.monotonic() if now is None else float(now)
     events = []
     resolved_map = resolve_action_mapping(action_map)
-    current_focus_step = _clamp_focus_step(focus_step, default=100) if focus_step is not None else 100
-    base_focus_step = current_focus_step
-    if focus_step_state is not None:
-        focus_step_state["value"] = current_focus_step
 
     dpad_names = ("dpad_up", "dpad_down", "dpad_left", "dpad_right")
-    def advance_step(direction: str) -> int:
-        nonlocal current_focus_step
-        step_sequence = [5, 10, 50, 100, 500]
-        current_value = _clamp_focus_step(current_focus_step, default=100)
-        try:
-            index = step_sequence.index(current_value)
-        except ValueError:
-            index = step_sequence.index(100)
-        if direction == "up":
-            next_index = min(index + 1, len(step_sequence) - 1)
-        elif direction == "down":
-            next_index = max(index - 1, 0)
-        else:
-            return current_value
-        current_focus_step = step_sequence[next_index]
-        if focus_step_state is not None:
-            focus_step_state["value"] = current_focus_step
-        return current_focus_step
-
     for name in dpad_names:
         current_pressed = bool(dpad.get(name))
         previous_pressed = bool(previous_dpad.get(name))
@@ -521,32 +495,19 @@ def build_action_events(
             current_pressed = bool(buttons.get(key))
             previous_pressed = bool(previous_buttons.get(key))
             if current_pressed != previous_pressed:
-                if action == "FOCUS_STEP_UP":
-                    if current_pressed:
-                        advance_step("up")
-                    continue
-                if action == "FOCUS_STEP_DOWN":
-                    if current_pressed:
-                        advance_step("down")
-                    continue
                 if action in {"CAA_ROTATE_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE"}:
-                    if current_pressed != previous_pressed:
-                        button_press_times[key] = now if current_pressed else button_press_times.get(key, now)
-                        events.append({"action": action, "pressed": current_pressed, "source": "button"})
-                    elif current_pressed:
-                        button_press_times[key] = now
+                    button_press_times[key] = now if current_pressed else button_press_times.get(key, now)
+                    events.append({"action": action, "pressed": current_pressed, "source": "button"})
                     continue
-                event = {"action": action, "pressed": current_pressed, "source": "button"}
-                if action in {"FOCUS_IN", "FOCUS_OUT"}:
-                    event["step"] = base_focus_step
-                events.append(event)
+                if action in {"FOCUSER_STEP_UP", "FOCUSER_STEP_DOWN"}:
+                    events.append({"action": action, "pressed": current_pressed, "source": "button"})
+                    continue
+                events.append({"action": action, "pressed": current_pressed, "source": "button"})
 
     for key in list(button_press_times):
         if key.startswith("button_") and key in buttons and not bool(buttons.get(key)):
             button_press_times.pop(key, None)
 
-    if focus_step_state is not None:
-        focus_step_state["value"] = current_focus_step
     return events
 
 
@@ -790,15 +751,12 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
 
             signature = state_signature(axes, buttons, dpad)
             if last_signature is None or signature != last_signature:
-                focus_state = {"value": 100}
                 action_events = build_action_events(
                     dpad=dpad,
                     buttons=buttons,
                     previous_dpad=previous_dpad,
                     previous_buttons=previous_buttons,
                     action_map=resolved_action_map,
-                    focus_step=focus_state["value"],
-                    focus_step_state=focus_state,
                     button_press_times=button_press_times,
                     now=now,
                 )
@@ -807,7 +765,7 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
                         action=event["action"],
                         pressed=event["pressed"],
                         source=event["source"],
-                        step=event.get("step"),
+                        step=None,
                         angle=event.get("angle"),
                     )
                     if protocol.validate_message(message):
@@ -841,8 +799,6 @@ class SenderWorker(QObject):
         self.port = port
         self.device_name = device_name
         self.action_map = resolve_action_mapping(action_map)
-        self._focus_step = _clamp_focus_step(focus_step, default=100)
-        self._focus_step_changed_callback = focus_step_changed_callback
         self._stop_event = threading.Event()
         self._socket = None
         self._joy = None
@@ -893,33 +849,21 @@ class SenderWorker(QObject):
                 buttons = {k: bool(v) for k, v in buttons.items()}
                 dpad = {k: bool(v) for k, v in dpad.items()}
 
-                focus_step_state = {"value": self._focus_step}
-                previous_focus_step = self._focus_step
                 action_events = build_action_events(
                     dpad=dpad,
                     buttons=buttons,
                     previous_dpad=previous_dpad,
                     previous_buttons=previous_buttons,
                     action_map=self.action_map,
-                    focus_step=focus_step_state["value"],
-                    focus_step_state=focus_step_state,
                     button_press_times=button_press_times,
                     now=now,
                 )
-                self._focus_step = _clamp_focus_step(focus_step_state["value"], default=100)
-                if previous_focus_step != self._focus_step and self._focus_step_changed_callback is not None:
-                    try:
-                        self._focus_step_changed_callback(self._focus_step)
-                    except Exception:
-                        pass
                 for event in action_events:
-                    if event["action"] in {"FOCUS_STEP_UP", "FOCUS_STEP_DOWN"}:
-                        continue
                     message = protocol.build_action_payload(
                         action=event["action"],
                         pressed=event["pressed"],
                         source=event["source"],
-                        step=event.get("step"),
+                        step=None,
                         angle=event.get("angle"),
                     )
                     packet = protocol.serialize_message(message)
@@ -964,11 +908,6 @@ class IndipadWindow(QMainWindow):
         self.port_edit = QLineEdit(str(self.gui_settings["port"]))
         self.heartbeat_checkbox = QCheckBox("Heartbeat log")
         self.heartbeat_checkbox.setChecked(bool(self.gui_settings["heartbeat"]))
-        self.focus_step_spin = QSpinBox()
-        self.focus_step_spin.setRange(1, 5000)
-        self.focus_step_spin.setValue(int(self.gui_settings.get("focus_step", 100)))
-        self.focus_step_spin.valueChanged.connect(self._on_focus_step_changed)
-
         form_layout.addRow("Controller", self.controller_combo)
 
         host_port_row = QHBoxLayout()
@@ -976,7 +915,6 @@ class IndipadWindow(QMainWindow):
         host_port_row.addWidget(self.port_edit)
         form_layout.addRow("Host / Port", host_port_row)
         form_layout.addRow("Heartbeat", self.heartbeat_checkbox)
-        form_layout.addRow("Focus step", self.focus_step_spin)
 
         button_row = QHBoxLayout()
         self.connection_button = QPushButton("Connect")
@@ -1007,25 +945,12 @@ class IndipadWindow(QMainWindow):
         self.console.append(message)
         self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
 
-    def _apply_focus_step_value(self, value: int):
-        clamped = _clamp_focus_step(value, default=100)
-        self.gui_settings["focus_step"] = clamped
-        self.focus_step_spin.setValue(clamped)
-        if self.worker is not None:
-            self.worker._focus_step = clamped
-
-    def _on_focus_step_changed(self, value: int):
-        self.gui_settings["focus_step"] = _clamp_focus_step(value, default=100)
-        if self.worker is not None:
-            self.worker._focus_step = self.gui_settings["focus_step"]
-
     def save_settings(self):
         settings = {
             "controller": self.controller_combo.currentText() if self.controller_combo.count() else "",
             "host": self.host_edit.text().strip() or "localhost",
             "port": int(self.port_edit.text().strip() or 50007),
             "heartbeat": self.heartbeat_checkbox.isChecked(),
-            "focus_step": self.focus_step_spin.value(),
             "action_mapping": resolve_action_mapping(self.gui_settings.get("action_mapping")),
         }
         if settings["controller"] in {"No controller found", "Controller unavailable"}:
@@ -1109,7 +1034,6 @@ class IndipadWindow(QMainWindow):
             "host": host,
             "port": port,
             "heartbeat": self.heartbeat_checkbox.isChecked(),
-            "focus_step": self.focus_step_spin.value(),
             "action_mapping": resolve_action_mapping(self.gui_settings.get("action_mapping")),
         }
         save_gui_settings(self.gui_settings)
@@ -1120,8 +1044,8 @@ class IndipadWindow(QMainWindow):
             port=port,
             device_name=device_name,
             action_map=self.gui_settings.get("action_mapping"),
-            focus_step=self.focus_step_spin.value(),
-            focus_step_changed_callback=self._apply_focus_step_value,
+            focus_step=100,
+            focus_step_changed_callback=None,
         )
         self.worker.status_changed.connect(lambda text: self.log(f"[gui] status: {text}"))
         self.worker.log_received.connect(self.handle_log_message)
