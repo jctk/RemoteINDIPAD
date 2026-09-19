@@ -198,10 +198,14 @@ _INDI_METHOD_NAMES = {
     "getText": "call_get_text",
     "getNumber": "call_get_number",
     "getPropertyState": "call_get_property_state",
+    "getSwitch": "call_get_switch",
     "setSwitch": "call_set_switch",
     "sendProperty": "call_send_property",
     "setNumber": "call_set_number",
+    "getProperties": "call_get_properties",
 }
+
+ACTIVE_INDI_SLEW_RATES: dict[str, list[str]] = {}
 
 
 def _check_indi_call_result(method_name: str, args: tuple, result) -> None:
@@ -275,6 +279,138 @@ async def _get_filter_slot_count(driver_name: str) -> int:
 
 def get_filter_slot_count(driver_name: str) -> int:
     return asyncio.run(_get_filter_slot_count(driver_name))
+
+
+async def _fetch_mount_slew_rates_async(driver_name: str) -> list[str]:
+    driver_name = str(driver_name or "").strip()
+    if not driver_name:
+        return []
+    if MessageBus is None or BusType is None:
+        raise RuntimeError("dbus-next is required for INDI operations")
+
+    bus = MessageBus(bus_type=BusType.SESSION)
+    await bus.connect()
+    try:
+        introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
+        proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
+        interface = proxy.get_interface("org.kde.kstars.INDI")
+
+        method = getattr(interface, "call_get_properties", None)
+        if method is None:
+            method = getattr(interface, "get_properties", None)
+        if method is None:
+            raise AttributeError("org.kde.kstars.INDI does not expose getProperties")
+
+        result = await method(driver_name)
+        values = []
+
+        def collect(value):
+            if isinstance(value, (list, tuple, set)):
+                for item in value:
+                    collect(item)
+            elif isinstance(value, dict):
+                for item in value.values():
+                    collect(item)
+            elif isinstance(value, str):
+                values.append(value)
+
+        collect(result)
+
+        rates: list[str] = []
+        for value in values:
+            label = str(value).strip()
+            if not label or ".TELESCOPE_SLEW_RATE." not in label:
+                continue
+            rate_name = label.split(".TELESCOPE_SLEW_RATE.", 1)[1].strip()
+            if rate_name:
+                rates.append(rate_name)
+        return list(dict.fromkeys(rates))
+    finally:
+        bus.disconnect()
+
+
+def get_mount_slew_rates(driver_name: str) -> list[str]:
+    driver_name = str(driver_name or "").strip()
+    if not driver_name:
+        return []
+    cached = ACTIVE_INDI_SLEW_RATES.get(driver_name)
+    if cached:
+        return list(cached)
+    try:
+        rates = asyncio.run(_fetch_mount_slew_rates_async(driver_name))
+    except Exception:
+        rates = []
+    if rates:
+        ACTIVE_INDI_SLEW_RATES[driver_name] = rates
+    return rates
+
+
+async def _get_mount_slew_switch_state_async(driver_name: str, slew_rate: str) -> bool:
+    driver_name = str(driver_name or "").strip()
+    slew_rate = str(slew_rate or "").strip()
+    if not driver_name or not slew_rate:
+        return False
+    if MessageBus is None or BusType is None:
+        raise RuntimeError("dbus-next is required for INDI operations")
+
+    bus = MessageBus(bus_type=BusType.SESSION)
+    await bus.connect()
+    try:
+        introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
+        proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
+        interface = proxy.get_interface("org.kde.kstars.INDI")
+
+        method = getattr(interface, "call_get_switch", None)
+        if method is None:
+            method = getattr(interface, "get_switch", None)
+        if method is None:
+            raise AttributeError("org.kde.kstars.INDI does not expose getSwitch")
+
+        result = await method(driver_name, "TELESCOPE_SLEW_RATE", slew_rate)
+        value = _dbus_value(result)
+        if isinstance(value, (tuple, list)):
+            value = value[0] if value else False
+        if isinstance(value, str):
+            return value.strip().lower() in {"on", "true", "1"}
+        return bool(value)
+    finally:
+        bus.disconnect()
+
+
+def get_current_mount_slew_rate(driver_name: str) -> str:
+    driver_name = str(driver_name or "").strip()
+    if not driver_name:
+        return ""
+    rates = get_mount_slew_rates(driver_name)
+    if not rates:
+        return ""
+    for rate in rates:
+        try:
+            if asyncio.run(_get_mount_slew_switch_state_async(driver_name, rate)):
+                return rate
+        except Exception:
+            continue
+    return rates[0]
+
+
+def set_mount_slew_rate(driver_name: str, slew_rate: str) -> bool:
+    driver_name = str(driver_name or "").strip()
+    slew_rate = str(slew_rate or "").strip()
+    if not driver_name or not slew_rate:
+        return False
+
+    calls = [
+        ("setSwitch", (driver_name, "TELESCOPE_SLEW_RATE", slew_rate, "On")),
+        ("sendProperty", (driver_name, "TELESCOPE_SLEW_RATE")),
+    ]
+    try:
+        asyncio.run(_run_indi_calls(calls))
+    except Exception as exc:
+        print(f"[receiver] TELESCOPE_SLEW_RATE/{slew_rate} D-Bus call error: {exc}", flush=True)
+        return False
+
+    print(f"[receiver] set mount slew rate to {slew_rate} on {driver_name}", flush=True)
+    return True
 
 
 def build_focus_dbus_calls(driver_name: str, direction: str, step: int | None = None) -> list[tuple[str, tuple[str, ...]]]:
@@ -799,6 +935,12 @@ async def fetch_indi_device_list():
 
         for category in discovered:
             discovered[category] = sorted(dict.fromkeys(discovered[category]))
+
+        for driver_name in discovered.get("mount", []):
+            try:
+                ACTIVE_INDI_SLEW_RATES[driver_name] = await _fetch_mount_slew_rates_async(driver_name)
+            except Exception:
+                ACTIVE_INDI_SLEW_RATES[driver_name] = []
         return discovered
     finally:
         bus.disconnect()
@@ -1197,10 +1339,42 @@ def handle_mount_east(pressed: bool, source: str = "dpad") -> None:
 
 def handle_mount_step_up(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("MOUNT_STEP_UP", "MOUNT_STEP_UP", pressed, source)
+    if not pressed:
+        return
+
+    driver_name = get_active_indi_device("mount")
+    rates = get_mount_slew_rates(driver_name)
+    if not rates:
+        print(f"[receiver] no mount slew rates available for {driver_name}", flush=True)
+        return
+
+    current = get_current_mount_slew_rate(driver_name)
+    if current not in rates:
+        current_index = 0
+    else:
+        current_index = rates.index(current)
+    next_index = min(len(rates) - 1, current_index + 1)
+    set_mount_slew_rate(driver_name, rates[next_index])
 
 
 def handle_mount_step_down(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("MOUNT_STEP_DOWN", "MOUNT_STEP_DOWN", pressed, source)
+    if not pressed:
+        return
+
+    driver_name = get_active_indi_device("mount")
+    rates = get_mount_slew_rates(driver_name)
+    if not rates:
+        print(f"[receiver] no mount slew rates available for {driver_name}", flush=True)
+        return
+
+    current = get_current_mount_slew_rate(driver_name)
+    if current not in rates:
+        current_index = len(rates) - 1
+    else:
+        current_index = rates.index(current)
+    previous_index = max(0, current_index - 1)
+    set_mount_slew_rate(driver_name, rates[previous_index])
 
 
 def handle_mount_stop(pressed: bool, source: str = "dpad") -> None:

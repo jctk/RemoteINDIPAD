@@ -704,6 +704,21 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(calls[4][0][1][2], "ABORT")
         self.assertEqual(calls[4][0][1][3], "On")
 
+    def test_mount_step_actions_cycle_slew_rates(self):
+        receiver.set_active_indi_device("mount", "INDI_MOUNT")
+
+        with patch.object(receiver, "get_mount_slew_rates", return_value=["1x", "2x", "3x", "4x"]), \
+             patch.object(receiver, "get_current_mount_slew_rate", return_value="2x"), \
+             patch.object(receiver, "set_mount_slew_rate") as mock_set:
+            receiver.handle_mount_step_up(True, "button")
+            receiver.handle_mount_step_down(True, "button")
+
+        self.assertEqual(mock_set.call_count, 2)
+        self.assertEqual(mock_set.call_args_list[0].args[0], "INDI_MOUNT")
+        self.assertEqual(mock_set.call_args_list[0].args[1], "3x")
+        self.assertEqual(mock_set.call_args_list[1].args[0], "INDI_MOUNT")
+        self.assertEqual(mock_set.call_args_list[1].args[1], "1x")
+
 
 if __name__ == "__main__":
     unittest.main()
