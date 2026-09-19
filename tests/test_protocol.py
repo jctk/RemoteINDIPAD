@@ -165,7 +165,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(axis_labels, ["Axis 1", "Axis 2"])
 
     def test_apply_mapping_preserves_other_controller_entries(self):
-        window = object.__new__(sender.IndipadWindow)
+        window = sender.IndipadWindow.__new__(sender.IndipadWindow)
         window.gui_settings = {
             "controller": "JC-U3712T",
             "controller_guid": "0300b561790000000600000000000000",
@@ -527,6 +527,25 @@ class ProtocolTests(unittest.TestCase):
         names = ["DualSense Wireless Controller", "Xbox Controller"]
         self.assertEqual(sender.resolve_gamepad_selection(names, "xbox"), 1)
         self.assertEqual(sender.resolve_gamepad_selection(names, "1"), 0)
+
+    def test_build_gamepad_monitor_snapshot_reports_pressed_state(self):
+        snapshot = sender.build_gamepad_monitor_snapshot(
+            device_name="JC-U3712T",
+            guid="0300...",
+            axes={"axis_1": 1.0, "axis_2": -0.5, "axis_3": 0.0, "axis_4": 0.125},
+            buttons={"button_1": True, "button_2": False, "button_5": True},
+            dpad={"dpad_up": True, "dpad_down": False, "dpad_left": False, "dpad_right": True},
+            axis_count=6,
+            button_count=16,
+            hat_count=1,
+        )
+        self.assertEqual(snapshot["device_name"], "JC-U3712T")
+        self.assertEqual(snapshot["axis_count"], 6)
+        self.assertEqual(snapshot["button_count"], 16)
+        self.assertEqual(snapshot["axes"]["axis_1"], 1.0)
+        self.assertTrue(snapshot["buttons"]["button_1"])
+        self.assertTrue(snapshot["dpad"]["dpad_up"])
+        self.assertTrue(snapshot["dpad"]["dpad_right"])
 
     def test_build_action_payload_uses_abstract_gamepad_actions(self):
         payload = protocol.build_action_payload(action="MOUNT_NORTH", pressed=True, source="dpad")

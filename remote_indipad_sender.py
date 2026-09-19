@@ -17,9 +17,9 @@ except ImportError:  # pragma: no cover - fallback for missing joystick package
     pygame = None
 
 try:
-    from PySide6.QtCore import QObject, Signal
+    from PySide6.QtCore import QObject, Qt, Signal
     from PySide6.QtGui import QFont
-    from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSpinBox, QTextEdit, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSpinBox, QTextEdit, QVBoxLayout, QWidget, QSizePolicy
 except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is used
     class QObject:
         def __init__(self, *args, **kwargs):
@@ -36,7 +36,7 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
             return None
 
     Signal = _FallbackSignal
-    QFont = QCheckBox = QComboBox = QFormLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QMessageBox = QPushButton = QSpinBox = QTextEdit = QVBoxLayout = QWidget = object
+    QFont = QCheckBox = QComboBox = QFormLayout = QGridLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QMessageBox = QPushButton = QSpinBox = QTextEdit = QVBoxLayout = QWidget = object
     QApplication = None
 
 import remote_indipad_protocol as protocol
@@ -876,28 +876,59 @@ def resolve_right_stick_axes(joy, axis_config=None):
     return float(joy.get_axis(x_axis)), float(joy.get_axis(y_axis))
 
 
+def _safe_joystick_axis(joy, index: int) -> float:
+    try:
+        total = int(getattr(joy, "get_numaxes", lambda: 0)())
+    except Exception:
+        return 0.0
+
+    if index < 0 or index >= total:
+        return 0.0
+
+    try:
+        return float(joy.get_axis(index))
+    except Exception:
+        return 0.0
+
+
 def read_gamepad_state(joy, axis_config=None):
     config = _normalize_axis_config(axis_config)
 
     if pygame is not None and getattr(pygame, "get_init", lambda: False)():
         pygame.event.pump()
 
+    total_axes = int(getattr(joy, "get_numaxes", lambda: 0)())
     max_axis_count = max(
-        int(getattr(joy, "get_numaxes", lambda: 0)()),
+        total_axes,
         max((int(axis_name.split("_", 1)[1]) for axis_name in config if axis_name.startswith("axis_")), default=0),
     )
     axes = {}
     for index in range(1, max_axis_count + 1):
         axis_name = f"axis_{index}"
         physical_index = int(config.get(axis_name, index - 1))
-        axes[axis_name] = float(joy.get_axis(physical_index))
+        if physical_index < 0 or physical_index >= total_axes:
+            fallback_index = index - 1
+            if fallback_index < 0 or fallback_index >= total_axes:
+                continue
+            physical_index = fallback_index
+        axes[axis_name] = _safe_joystick_axis(joy, physical_index)
 
+    button_count = int(getattr(joy, "get_numbuttons", lambda: 0)())
     buttons = {}
-    for i in range(min(12, joy.get_numbuttons())):
-        buttons[f"button_{i + 1}"] = bool(joy.get_button(i))
+    for i in range(min(16, button_count)):
+        try:
+            buttons[f"button_{i + 1}"] = bool(joy.get_button(i))
+        except Exception:
+            buttons[f"button_{i + 1}"] = False
 
     dpad = {}
     if hasattr(joy, "get_hat"):
+        try:
+            hat_count = int(getattr(joy, "get_numhats", lambda: 1)())
+        except Exception:
+            hat_count = 1
+        if hat_count <= 0:
+            hat_count = 1
         try:
             hat_x, hat_y = joy.get_hat(0)
         except TypeError:
@@ -905,12 +936,56 @@ def read_gamepad_state(joy, axis_config=None):
                 hat_x, hat_y = joy.get_hat()
             except TypeError:
                 hat_x, hat_y = (0, 0)
+        except Exception:
+            hat_x, hat_y = (0, 0)
         dpad["dpad_up"] = hat_y == -1
         dpad["dpad_down"] = hat_y == 1
         dpad["dpad_left"] = hat_x == -1
         dpad["dpad_right"] = hat_x == 1
 
     return axes, buttons, dpad
+
+
+def build_gamepad_monitor_snapshot(
+    device_name: str | None = None,
+    guid: str | None = None,
+    axes: dict | None = None,
+    buttons: dict | None = None,
+    dpad: dict | None = None,
+    axis_count: int = 0,
+    button_count: int = 0,
+    hat_count: int = 0,
+    instance_id: str | int | None = None,
+    trackballs: int = 0,
+):
+    normalized_axes = {}
+    for key, value in (axes or {}).items():
+        normalized_axes[str(key)] = float(value)
+
+    normalized_buttons = {}
+    for key, value in (buttons or {}).items():
+        normalized_buttons[str(key)] = bool(value)
+
+    normalized_dpad = {}
+    for key, value in (dpad or {}).items():
+        normalized_dpad[str(key)] = bool(value)
+
+    count_axes = int(axis_count or max((int(key.split("_", 1)[1]) for key in normalized_axes if str(key).startswith("axis_")), default=0))
+    count_buttons = int(button_count or max((int(key.split("_", 1)[1]) for key in normalized_buttons if str(key).startswith("button_")), default=0))
+    count_hats = int(hat_count or (1 if any(str(key).startswith("dpad_") for key in normalized_dpad) else 0))
+
+    return {
+        "device_name": str(device_name or "Unknown gamepad"),
+        "device_guid": str(guid or ""),
+        "instance_id": str(instance_id or ""),
+        "axis_count": count_axes,
+        "button_count": count_buttons,
+        "hat_count": count_hats,
+        "trackballs": int(trackballs),
+        "axes": normalized_axes,
+        "buttons": normalized_buttons,
+        "dpad": normalized_dpad,
+    }
 
 
 def demo_axes_state(step: int):
@@ -1045,6 +1120,7 @@ class SenderWorker(QObject):
     status_changed = Signal(str)
     log_received = Signal(str)
     connection_changed = Signal(str)
+    monitor_updated = Signal(object)
 
     def __init__(
         self,
@@ -1098,6 +1174,8 @@ class SenderWorker(QObject):
             previous_dpad = {}
             previous_buttons = {}
             button_press_times = {}
+            previous_signature = None
+            last_snapshot = None
             while not self._stop_event.is_set():
                 now = time.monotonic()
                 if now - last_heartbeat >= 1.0:
@@ -1111,42 +1189,59 @@ class SenderWorker(QObject):
                 axes = normalize_axes(axes)
                 buttons = {k: bool(v) for k, v in buttons.items()}
                 dpad = {k: bool(v) for k, v in dpad.items()}
+                snapshot = build_gamepad_monitor_snapshot(
+                    device_name=get_gamepad_name(self._joy),
+                    guid=get_device_guid(self._joy),
+                    axes=axes,
+                    buttons=buttons,
+                    dpad=dpad,
+                    axis_count=int(getattr(self._joy, "get_numaxes", lambda: 0)()),
+                    button_count=int(getattr(self._joy, "get_numbuttons", lambda: 0)()),
+                    hat_count=int(getattr(self._joy, "get_numhats", lambda: 0)()),
+                    instance_id=getattr(self._joy, "get_instance_id", lambda: "")(),
+                )
+                if snapshot != last_snapshot:
+                    self._safe_emit(self.monitor_updated, snapshot)
+                    last_snapshot = snapshot
 
                 focus_step_state = {"value": self._focus_step}
                 previous_focus_step = self._focus_step
-                action_events = build_action_events(
-                    dpad=dpad,
-                    buttons=buttons,
-                    previous_dpad=previous_dpad,
-                    previous_buttons=previous_buttons,
-                    action_map=self.action_map,
-                    focus_step=focus_step_state["value"],
-                    focus_step_state=focus_step_state,
-                    button_press_times=button_press_times,
-                    now=now,
-                )
+                signature = state_signature(axes, buttons, dpad)
+                if previous_signature is None or signature != previous_signature:
+                    action_events = build_action_events(
+                        dpad=dpad,
+                        buttons=buttons,
+                        previous_dpad=previous_dpad,
+                        previous_buttons=previous_buttons,
+                        action_map=self.action_map,
+                        focus_step=focus_step_state["value"],
+                        focus_step_state=focus_step_state,
+                        button_press_times=button_press_times,
+                        now=now,
+                    )
+                    for event in action_events:
+                        if event["action"] in {"FOCUS_STEP_UP", "FOCUS_STEP_DOWN"}:
+                            continue
+                        message = protocol.build_action_payload(
+                            action=event["action"],
+                            pressed=event["pressed"],
+                            source=event["source"],
+                            step=event.get("step"),
+                            angle=event.get("angle"),
+                        )
+                        packet = protocol.serialize_message(message)
+                        self._socket.sendall((packet + "\n").encode("utf-8"))
+                        self._safe_emit(self.log_received, json.dumps(message, ensure_ascii=False, separators=(",", ":")))
+                    previous_dpad = dpad.copy()
+                    previous_buttons = buttons.copy()
+                    previous_signature = signature
+
                 self._focus_step = _clamp_focus_step(focus_step_state["value"], default=100)
                 if previous_focus_step != self._focus_step and self._focus_step_changed_callback is not None:
                     try:
                         self._focus_step_changed_callback(self._focus_step)
                     except Exception:
                         pass
-                for event in action_events:
-                    if event["action"] in {"FOCUS_STEP_UP", "FOCUS_STEP_DOWN"}:
-                        continue
-                    message = protocol.build_action_payload(
-                        action=event["action"],
-                        pressed=event["pressed"],
-                        source=event["source"],
-                        step=event.get("step"),
-                        angle=event.get("angle"),
-                    )
-                    packet = protocol.serialize_message(message)
-                    self._socket.sendall((packet + "\n").encode("utf-8"))
-                    self._safe_emit(self.log_received, json.dumps(message, ensure_ascii=False, separators=(",", ":")))
-
-                previous_dpad = dpad.copy()
-                previous_buttons = buttons.copy()
                 time.sleep(0.05)
         except Exception as exc:  # pragma: no cover - runtime behavior
             self._safe_emit(self.connection_changed, f"Error: {exc}")
@@ -1172,6 +1267,7 @@ class IndipadWindow(QMainWindow):
         self.worker_thread = None
         self.gui_settings = load_gui_settings()
 
+        # Central widget and main layout
         central = QWidget(self)
         self.setCentralWidget(central)
 
@@ -1210,16 +1306,135 @@ class IndipadWindow(QMainWindow):
         self.console.setFont(QFont("Consolas", 10))
         self.console.setPlainText("INDIPAD console\n")
 
+        self.monitor_widget = QWidget()
+        self.monitor_layout = QVBoxLayout(self.monitor_widget)
+        self.monitor_layout.setContentsMargins(0, 0, 0, 0)
+        self.monitor_layout.setSpacing(6)
+
+        self.monitor_title = QLabel("MONITOR")
+        self.monitor_title.setStyleSheet("font-weight: bold;")
+        self.monitor_layout.addWidget(self.monitor_title)
+
+        self.monitor_summary = QWidget()
+        self.monitor_summary_layout = QHBoxLayout(self.monitor_summary)
+        self.monitor_summary_layout.setContentsMargins(0, 0, 0, 0)
+        self.monitor_summary_layout.setSpacing(8)
+        self.monitor_summary_layout.setStretch(0, 0)
+        self.monitor_summary_layout.setStretch(1, 0)
+        self.monitor_summary_layout.setStretch(2, 0)
+        self.monitor_summary_layout.setStretch(3, 0)
+
+        self.monitor_detail = QWidget()
+        self.monitor_detail.setFixedWidth(270)
+        self.monitor_detail_layout = QFormLayout(self.monitor_detail)
+        self.monitor_detail_layout.setContentsMargins(0, 0, 0, 0)
+        self.monitor_detail_layout.setHorizontalSpacing(8)
+        self.monitor_detail_layout.setVerticalSpacing(1)
+        self.monitor_instance_label = QLabel("0")
+        self.monitor_guid_label = QLabel("-")
+        self.monitor_guid_label.setWordWrap(False)
+        self.monitor_axes_count = QLabel("0")
+        self.monitor_buttons_count = QLabel("0")
+        self.monitor_hats_count = QLabel("0")
+        self.monitor_trackballs_count = QLabel("0")
+        self.monitor_detail_layout.addRow("Instance Id:", self.monitor_instance_label)
+        self.monitor_detail_layout.addRow("Guid:", self.monitor_guid_label)
+        self.monitor_detail_layout.addRow("Axes:", self.monitor_axes_count)
+        self.monitor_detail_layout.addRow("Buttons:", self.monitor_buttons_count)
+        self.monitor_detail_layout.addRow("Hats:", self.monitor_hats_count)
+        self.monitor_detail_layout.addRow("Trackballs:", self.monitor_trackballs_count)
+        self.monitor_summary_layout.addWidget(self.monitor_detail)
+
+        self.monitor_axis_labels = {}
+        self.monitor_axis_panel = QWidget()
+        self.monitor_axis_panel.setFixedWidth(170)
+        self.monitor_axis_layout = QVBoxLayout(self.monitor_axis_panel)
+        self.monitor_axis_layout.setContentsMargins(0, 0, 0, 0)
+        self.monitor_axis_layout.setSpacing(1)
+        self.monitor_axis_layout.addWidget(QLabel("AXES"))
+        for index in range(1, 7):
+            label = QLabel(f"Axis {index}: 0.000")
+            label.setFixedWidth(150)
+            label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+            self.monitor_axis_labels[f"axis_{index}"] = label
+            self.monitor_axis_layout.addWidget(label)
+
+        self.monitor_axis_panel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Maximum)
+        self.monitor_summary_layout.addWidget(self.monitor_axis_panel, 0, Qt.AlignTop)
+
+        self.monitor_dpad_labels = {}
+
+        self.monitor_dpad_panel = QWidget()
+        self.monitor_dpad_panel.setFixedWidth(170)
+
+        self.monitor_dpad_layout = QFormLayout(self.monitor_dpad_panel)
+        self.monitor_dpad_layout.setContentsMargins(0, 0, 0, 0)
+        self.monitor_dpad_layout.setHorizontalSpacing(8)
+        self.monitor_dpad_layout.setVerticalSpacing(1)
+
+        title = QLabel("DPAD")
+        self.monitor_dpad_layout.addRow(title)
+
+        for direction in ("Up", "Down", "Left", "Right"):
+            value_label = QLabel("Released")
+            self.monitor_dpad_labels[f"dpad_{direction.lower()}"] = value_label
+            self.monitor_dpad_layout.addRow(f"{direction}:", value_label)
+
+        self.monitor_dpad_panel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Maximum)
+        self.monitor_summary_layout.addWidget(self.monitor_dpad_panel, 0, Qt.AlignTop)
+
+        self.monitor_button_labels = {}
+        self.monitor_button_panel = QWidget()
+        self.monitor_button_panel.setFixedWidth(200)
+        self.monitor_button_layout = QGridLayout(self.monitor_button_panel)
+        self.monitor_button_layout.setContentsMargins(0, 0, 8, 0)
+        self.monitor_button_layout.setHorizontalSpacing(6)
+        self.monitor_button_layout.setVerticalSpacing(1)
+        self.monitor_button_layout.addWidget(QLabel("BUTTONS"), 0, 0, 1, 2)
+        for index in range(1, 17):
+            label = QLabel(f"{index}: Released")
+            label.setMinimumWidth(80)
+            self.monitor_button_labels[f"button_{index}"] = label
+            column = 0 if index <= 8 else 1
+            row = index if index <= 8 else index - 8
+            self.monitor_button_layout.addWidget(label, row + 1, column)
+        self.monitor_summary_layout.addWidget(self.monitor_button_panel)
+        self.monitor_summary_layout.addStretch(1)
+
+        self.monitor_layout.addWidget(self.monitor_summary)
+        self.monitor_widget.setStyleSheet(
+            "QWidget { color: #e5e7eb; } "
+            "QLabel { qproperty-alignment: AlignLeft; margin: 0px; padding: 0px; }"
+        )
+        self.monitor_widget.setContentsMargins(0, 0, 0, 10)
+
+        main_layout.setSpacing(8)
         main_layout.addLayout(form_layout)
         main_layout.addLayout(button_row)
+        main_layout.addWidget(self.monitor_widget)
+        self.console.setContentsMargins(0, 8, 0, 0)
         main_layout.addWidget(self.console)
 
         self.connection_button.clicked.connect(self.on_toggle_connection)
         self.mapping_button.clicked.connect(self.on_edit_mapping)
         self.close_button.clicked.connect(self.on_close)
+        self.controller_combo.currentIndexChanged.connect(self._start_monitor_preview_timer)
 
         self.refresh_controllers()
         self.restore_saved_controller()
+        self._monitor_preview_timer = None
+        self._start_monitor_preview_timer()
+        self.update_monitor_snapshot(build_gamepad_monitor_snapshot(
+            device_name=self.controller_combo.currentText() if self.controller_combo.count() else "",
+            guid="",
+            axes={},
+            buttons={},
+            dpad={},
+            axis_count=6,
+            button_count=16,
+            hat_count=1,
+        ))
         self.log("Ready")
 
     def log(self, message: str):
@@ -1279,6 +1494,110 @@ class IndipadWindow(QMainWindow):
             if self.controller_combo.itemText(index) == saved_controller:
                 self.controller_combo.setCurrentIndex(index)
                 return
+
+    def _start_monitor_preview_timer(self):
+        if not hasattr(self, "_monitor_preview_timer") or self._monitor_preview_timer is None:
+            from PySide6.QtCore import QTimer
+            self._monitor_preview_timer = QTimer(self)
+            self._monitor_preview_timer.setInterval(100)
+            self._monitor_preview_timer.timeout.connect(self._refresh_monitor_preview)
+        if self.worker is not None:
+            self._monitor_preview_timer.stop()
+            return
+        if self.controller_combo.count() == 0:
+            return
+        self._monitor_preview_timer.start()
+
+    def _refresh_monitor_preview(self):
+        if self.worker is not None:
+            return
+        try:
+            import pygame as gui_pygame
+            if not gui_pygame.get_init():
+                gui_pygame.init()
+            if not gui_pygame.joystick.get_init():
+                gui_pygame.joystick.init()
+            selected_index = self.controller_combo.currentIndex()
+            if selected_index < 0 or selected_index >= gui_pygame.joystick.get_count():
+                return
+            selected_joy = gui_pygame.joystick.Joystick(selected_index)
+            selected_joy.init()
+            axes, buttons, dpad = read_gamepad_state(selected_joy, load_axis_config())
+            axes = normalize_axes(axes)
+            buttons = {k: bool(v) for k, v in buttons.items()}
+            dpad = {k: bool(v) for k, v in dpad.items()}
+            self.update_monitor_snapshot(build_gamepad_monitor_snapshot(
+                device_name=get_gamepad_name(selected_joy),
+                guid=get_device_guid(selected_joy),
+                axes=axes,
+                buttons=buttons,
+                dpad=dpad,
+                axis_count=int(getattr(selected_joy, "get_numaxes", lambda: 0)()),
+                button_count=int(getattr(selected_joy, "get_numbuttons", lambda: 0)()),
+                hat_count=int(getattr(selected_joy, "get_numhats", lambda: 0)()),
+                instance_id=getattr(selected_joy, "get_instance_id", lambda: "")(),
+            ))
+        except Exception:
+            return
+
+    def update_monitor_snapshot(self, snapshot: dict):
+        if not isinstance(snapshot, dict):
+            return
+
+        device_name = str(snapshot.get("device_name") or self.controller_combo.currentText() or "Unknown gamepad")
+        guid = str(snapshot.get("device_guid") or "")
+        if not guid and self.controller_combo.count():
+            try:
+                import pygame as gui_pygame
+                if not gui_pygame.get_init():
+                    gui_pygame.init()
+                if not gui_pygame.joystick.get_init():
+                    gui_pygame.joystick.init()
+                for index in range(gui_pygame.joystick.get_count()):
+                    joy = gui_pygame.joystick.Joystick(index)
+                    joy.init()
+                    if get_device_name(joy) == device_name:
+                        guid = get_device_guid(joy)
+                        break
+            except Exception:
+                guid = ""
+        self.monitor_instance_label.setText(str(snapshot.get("instance_id") or "0"))
+        self.monitor_guid_label.setText(guid or "-")
+        self.monitor_axes_count.setText(str(snapshot.get("axis_count") or 0))
+        self.monitor_buttons_count.setText(str(snapshot.get("button_count") or 0))
+        self.monitor_hats_count.setText(str(snapshot.get("hat_count") or 0))
+        self.monitor_trackballs_count.setText(str(snapshot.get("trackballs") or 0))
+
+        axis_count = max(int(snapshot.get("axis_count") or 0), 0)
+        axis_values = snapshot.get("axes", {})
+        for axis_index in range(1, 7):
+            axis_key = f"axis_{axis_index}"
+            label = self.monitor_axis_labels.get(axis_key)
+            if label is None:
+                continue
+            if axis_index <= axis_count:
+                value = float(axis_values.get(axis_key, 0.0))
+                label.setText(f"Axis {axis_index}: {value:.3f}")
+            else:
+                label.setText("")
+
+        dpad_values = snapshot.get("dpad", {})
+        for key, label in self.monitor_dpad_labels.items():
+            pressed = bool(dpad_values.get(key, False))
+            label.setText("Pressed" if pressed else "Released")
+
+        button_count = max(int(snapshot.get("button_count") or 0), 0)
+        button_values = snapshot.get("buttons", {})
+        for index in range(1, 17):
+            button_key = f"button_{index}"
+            label = self.monitor_button_labels.get(button_key)
+            if label is None:
+                continue
+            if index <= button_count:
+                pressed = bool(button_values.get(button_key, False))
+                label.setText(f"{index}: {'Pressed' if pressed else 'Released'}")
+            else:
+                label.setText("")
 
     def handle_log_message(self, message: str):
         if "heartbeat" in message.lower() and not self.heartbeat_checkbox.isChecked():
@@ -1400,6 +1719,8 @@ class IndipadWindow(QMainWindow):
         if self.worker is not None:
             self.log("[gui] already connected")
             return
+        if hasattr(self, "_monitor_preview_timer"):
+            self._monitor_preview_timer.stop()
 
         device_name = self.controller_combo.currentText()
         if device_name in {"No controller found", "Controller unavailable"}:
@@ -1459,6 +1780,7 @@ class IndipadWindow(QMainWindow):
         self.worker.log_received.connect(self.handle_log_message)
         self.worker.connection_changed.connect(self._handle_connection_update)
         self.worker.connection_changed.connect(lambda text: self.log(f"[gui] {text}"))
+        self.worker.monitor_updated.connect(self.update_monitor_snapshot)
 
         self.worker_thread = threading.Thread(target=self.worker.run, daemon=True)
         self.worker_thread.start()
@@ -1472,6 +1794,8 @@ class IndipadWindow(QMainWindow):
         self.worker = None
         self.save_settings()
         self.set_connection_button_state(False)
+        if hasattr(self, "_monitor_preview_timer"):
+            self._monitor_preview_timer.start()
         self.log("[gui] disconnected")
 
     def on_close(self):
