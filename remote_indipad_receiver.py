@@ -1124,20 +1124,75 @@ def run_gui():
     return app.exec()
 
 
+def _execute_mount_switch_action(driver_name: str, property_name: str, switch_name: str, enabled: bool) -> None:
+    driver_name = str(driver_name or "").strip()
+    if not driver_name:
+        print("[receiver] no mount selected; cannot execute mount motion", flush=True)
+        return
+
+    state = "On" if bool(enabled) else "Off"
+    calls = [
+        ("setSwitch", (driver_name, property_name, switch_name, state)),
+        ("sendProperty", (driver_name, property_name)),
+    ]
+    try:
+        asyncio.run(_run_indi_calls(calls))
+    except Exception as exc:
+        print(f"[receiver] {property_name}/{switch_name} D-Bus call error: {exc}", flush=True)
+        return
+
+    print(f"[receiver] executed mount {property_name}/{switch_name} -> {state} on {driver_name}", flush=True)
+
+
+def _execute_mount_abort_action(driver_name: str | None = None) -> None:
+    driver_name = str(driver_name or get_active_indi_device("mount") or "").strip()
+    if not driver_name:
+        print("[receiver] no mount selected; cannot abort slewing", flush=True)
+        return
+
+    calls = [
+        ("setSwitch", (driver_name, "TELESCOPE_ABORT_MOTION", "ABORT", "On")),
+        ("sendProperty", (driver_name, "TELESCOPE_ABORT_MOTION")),
+    ]
+    try:
+        asyncio.run(_run_indi_calls(calls))
+    except Exception as exc:
+        print(f"[receiver] TELESCOPE_ABORT_MOTION D-Bus call error: {exc}", flush=True)
+        return
+
+    print(f"[receiver] executed ABORT on {driver_name}", flush=True)
+
+
 def handle_mount_north(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_NORTH", "MOUNT_NORTH", pressed, source)
+    if pressed:
+        _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_NS", "MOTION_NORTH", True)
+    else:
+        _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_NS", "MOTION_NORTH", False)
 
 
 def handle_mount_south(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_SOUTH", "MOUNT_SOUTH", pressed, source)
+    if pressed:
+        _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_NS", "MOTION_SOUTH", True)
+    else:
+        _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_NS", "MOTION_SOUTH", False)
 
 
 def handle_mount_west(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_WEST", "MOUNT_WEST", pressed, source)
+    if pressed:
+        _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_WE", "MOTION_WEST", True)
+    else:
+        _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_WE", "MOTION_WEST", False)
 
 
 def handle_mount_east(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_EAST", "MOUNT_EAST", pressed, source)
+    if pressed:
+        _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_WE", "MOTION_EAST", True)
+    else:
+        _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_WE", "MOTION_EAST", False)
 
 
 def handle_mount_step_up(pressed: bool, source: str = "button") -> None:
@@ -1150,6 +1205,8 @@ def handle_mount_step_down(pressed: bool, source: str = "button") -> None:
 
 def handle_mount_stop(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_STOP", "MOUNT_STOP", pressed, source)
+    if pressed:
+        _execute_mount_abort_action()
 
 
 def handle_focus_in(pressed: bool, source: str = "button", step: int | None = None) -> None:
@@ -1216,7 +1273,7 @@ def _should_abort_rotator_release(direction: str) -> bool:
     normalized = str(direction).upper()
     previous = int(_ROTATOR_RELEASE_COUNTS.get(normalized, 0))
     _ROTATOR_RELEASE_COUNTS[normalized] = previous + 1
-    return previous >= 1
+    return True
 
 
 def handle_caa_rotate_counter_clockwise(pressed: bool, source: str = "button", angle: int | None = None) -> None:

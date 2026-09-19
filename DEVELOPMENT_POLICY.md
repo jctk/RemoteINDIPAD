@@ -229,13 +229,13 @@ $ source venv/bin/activate
 
 | デバイス区分 | 抽象化操作名 | 操作内容 | GAMEPADのマッピング |
 | - | - | - | - |
-| マウント | MOUNT_NORTH | マウントの移動: 北 | DPAD DOWN（ボタンダウン時） |
-| マウント | MOUNT_SOUTH | マウントの移動: 南 | DPAD UP（ボタンダウン時） |
-| マウント | MOUNT_WEST | マウントの移動: 西 | DPAD LEFT（ボタンダウン時） |
-| マウント | MOUNT_EAST | マウントの移動: 東 | DPAD RIGHT（ボタンダウン時） |
+| マウント | MOUNT_NORTH | マウントの移動: 北 | DPAD DOWN |
+| マウント | MOUNT_SOUTH | マウントの移動: 南 | DPAD UP |
+| マウント | MOUNT_WEST | マウントの移動: 西 | DPAD LEFT |
+| マウント | MOUNT_EAST | マウントの移動: 東 | DPAD RIGHT |
 | マウント | MOUNT_STEP_UP | マウント移動ステップUP | ボタン5（L上） |
 | マウント | MOUNT_STEP_DOWN | マウント移動ステップDOWN | ボタン7（L下） |
-| マウント | MOUNT_STOP | マウント移動停止（Slew停止） | ボタン9 または DPADのボタンアップ時 |
+| マウント | MOUNT_STOP | マウント移動停止（Slew停止） | ボタン9 |
 | フォーカサー | FOCUS_OUT | フォーカスOut | ボタン6（R上） |
 | フォーカサー | FOCUS_IN | フォーカスIn | ボタン8（R下） |
 | フォーカサー | FOCUS_STEP_UP | フォーカスステップUP（5→10→50→100→500） | ボタン2 |
@@ -269,10 +269,10 @@ $ source venv/bin/activate
 
 | 抽象化操作名 | 動作 |
 | - | - |
-| MOUNT_NORTH | マウントのDEC軸を北向きへSlewし続ける。 |
-| MOUNT_SOUTH | マウントのDEC軸を南向きへSlewし続ける。 |
-| MOUNT_WEST | マウントのRA軸を西向きへSlewし続ける。 |
-| MOUNT_EAST | マウントのRA軸を東向きへSlewし続ける。 |
+| MOUNT_NORTH | pressed が true でマウントのDEC軸を北向きへSlewし続ける。pressed が false で北向きのSlewを停止。 |
+| MOUNT_SOUTH | pressed が true でマウントのDEC軸を南向きへSlewし続ける。pressed が false で南向きのSlewを停止。 |
+| MOUNT_WEST | pressed が true でマウントのRA軸を西向きへSlewし続ける。pressed が false で西向きのSlewを停止。 |
+| MOUNT_EAST | pressed が true でマウントのRA軸を東向きへSlewし続ける。pressed が false で東向きのSlewを停止。 |
 | MOUNT_STEP_UP | Slewの移動速度を一段階スピードアップする。移動速度はマウントによる。 |
 | MOUNT_STEP_DOWN | Slewの移動速度を一段階スローダウンする。移動速度はマウントによる。 |
 | MOUNT_STOP | Slew中のマウントを停止させる。トラックの停止ではない。 |

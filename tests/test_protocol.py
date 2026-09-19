@@ -676,6 +676,34 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("MOUNT_STOP", printed)
         self.assertIn("SKYMAP_MOVE", printed)
 
+    def test_mount_actions_toggle_indi_switches_and_abort(self):
+        receiver.set_active_indi_device("mount", "INDI_MOUNT")
+
+        mock_calls = unittest.mock.AsyncMock(return_value=[True])
+        with patch("remote_indipad_receiver._run_indi_calls", mock_calls):
+            receiver.handle_mount_north(True, "dpad")
+            receiver.handle_mount_south(False, "dpad")
+            receiver.handle_mount_west(True, "dpad")
+            receiver.handle_mount_east(False, "dpad")
+            receiver.handle_mount_stop(True, "dpad")
+
+        self.assertEqual(mock_calls.call_count, 5)
+        calls = [call.args[0] for call in mock_calls.call_args_list]
+        self.assertEqual(calls[0][0][0], "setSwitch")
+        self.assertEqual(calls[0][0][1][0], "INDI_MOUNT")
+        self.assertEqual(calls[0][0][1][1], "TELESCOPE_MOTION_NS")
+        self.assertEqual(calls[0][0][1][2], "MOTION_NORTH")
+        self.assertEqual(calls[0][0][1][3], "On")
+        self.assertEqual(calls[1][0][1][2], "MOTION_SOUTH")
+        self.assertEqual(calls[1][0][1][3], "Off")
+        self.assertEqual(calls[2][0][1][1], "TELESCOPE_MOTION_WE")
+        self.assertEqual(calls[2][0][1][2], "MOTION_WEST")
+        self.assertEqual(calls[3][0][1][2], "MOTION_EAST")
+        self.assertEqual(calls[3][0][1][3], "Off")
+        self.assertEqual(calls[4][0][1][1], "TELESCOPE_ABORT_MOTION")
+        self.assertEqual(calls[4][0][1][2], "ABORT")
+        self.assertEqual(calls[4][0][1][3], "On")
+
 
 if __name__ == "__main__":
     unittest.main()
