@@ -102,16 +102,19 @@ _DEBUG_JSON_CURSOR_SAVED = False
 _DEBUG_JSON_LAST_LINES = 0
 
 
-def resolve_action_mapping(source: dict | None = None):
+def get_device_guid(joy) -> str:
+    if joy is None:
+        return ""
+    guid = getattr(joy, "get_guid", lambda: "")()
+    return str(guid or "")
+
+
+def _resolve_flat_action_mapping(mapping: dict | None):
     resolved = DEFAULT_ACTION_MAPPING.copy()
-    if not isinstance(source, dict):
+    if not isinstance(mapping, dict):
         return resolved
 
-    nested = source.get("action_mapping") if isinstance(source.get("action_mapping"), dict) else source
-    if not isinstance(nested, dict):
-        return resolved
-
-    for key, value in nested.items():
+    for key, value in mapping.items():
         if not isinstance(key, str):
             continue
         if not (key.startswith("dpad_") or key.startswith("button_") or key.startswith("left_") or key.startswith("right_")):
@@ -127,6 +130,109 @@ def resolve_action_mapping(source: dict | None = None):
             resolved[key] = value
 
     return resolved
+
+
+def _normalize_action_mapping_store(raw_mapping, controller_name: str | None = None, controller_guid: str | None = None):
+    normalized_name = str(controller_name or "").strip()
+    normalized_guid = str(controller_guid or "").strip()
+
+    if isinstance(raw_mapping, dict) and ("controllers" in raw_mapping or "entries" in raw_mapping):
+        container = raw_mapping.get("controllers", raw_mapping.get("entries", []))
+        entries = []
+        if isinstance(container, list):
+            for entry in container:
+                if not isinstance(entry, dict):
+                    continue
+                entry_name = str(entry.get("name", "")).strip()
+                entry_guid = str(entry.get("guid", "")).strip()
+                mapping_value = entry.get("mapping") if isinstance(entry.get("mapping"), dict) else entry
+                entries.append({
+                    "name": entry_name,
+                    "guid": entry_guid,
+                    "mapping": _resolve_flat_action_mapping(mapping_value),
+                })
+
+        current_mapping = _resolve_flat_action_mapping(raw_mapping.get("default") if isinstance(raw_mapping.get("default"), dict) else DEFAULT_ACTION_MAPPING.copy())
+        if normalized_name or normalized_guid:
+            entries = [entry for entry in entries if not (str(entry.get("name", "")).strip() == normalized_name and str(entry.get("guid", "")).strip() == normalized_guid)]
+            entries.append({
+                "name": normalized_name,
+                "guid": normalized_guid,
+                "mapping": current_mapping,
+            })
+        default_mapping = raw_mapping.get("default") if isinstance(raw_mapping.get("default"), dict) else DEFAULT_ACTION_MAPPING.copy()
+        return {
+            "default": _resolve_flat_action_mapping(default_mapping),
+            "controllers": entries,
+        }
+
+    if isinstance(raw_mapping, dict) and isinstance(raw_mapping.get("mapping"), dict) and "name" in raw_mapping and "guid" in raw_mapping:
+        current_mapping = _resolve_flat_action_mapping(raw_mapping.get("mapping"))
+        return {
+            "default": _resolve_flat_action_mapping(raw_mapping.get("default") if isinstance(raw_mapping.get("default"), dict) else current_mapping),
+            "controllers": [{
+                "name": str(raw_mapping.get("name", "")).strip(),
+                "guid": str(raw_mapping.get("guid", "")).strip(),
+                "mapping": current_mapping,
+            }],
+        }
+
+    current_mapping = _resolve_flat_action_mapping(raw_mapping)
+    containers = []
+    if normalized_name or normalized_guid:
+        containers.append({
+            "name": normalized_name,
+            "guid": normalized_guid,
+            "mapping": current_mapping,
+        })
+    return {
+        "default": current_mapping,
+        "controllers": containers,
+    }
+
+
+def resolve_action_mapping(source: dict | None = None, device_name: str | None = None, device_guid: str | None = None):
+    resolved = DEFAULT_ACTION_MAPPING.copy()
+    if not isinstance(source, dict):
+        return resolved
+
+    candidate = source.get("action_mapping") if isinstance(source.get("action_mapping"), dict) else source
+    if not isinstance(candidate, dict):
+        return resolved
+
+    if device_name is None:
+        device_name = source.get("controller")
+    if device_guid is None:
+        device_guid = source.get("controller_guid")
+
+    if "controllers" in candidate or "entries" in candidate:
+        controller_entries = candidate.get("controllers", candidate.get("entries", []))
+        if isinstance(controller_entries, list):
+            normalized_name = str(device_name or "").strip()
+            normalized_guid = str(device_guid or "").strip()
+            for entry in controller_entries:
+                if not isinstance(entry, dict):
+                    continue
+                name_match = str(entry.get("name", "")).strip() == normalized_name
+                guid_match = str(entry.get("guid", "")).strip() == normalized_guid
+                if name_match and guid_match:
+                    mapping = entry.get("mapping")
+                    return _resolve_flat_action_mapping(mapping)
+            default_mapping = candidate.get("default")
+            if isinstance(default_mapping, dict):
+                return _resolve_flat_action_mapping(default_mapping)
+            return resolved
+
+    if "name" in candidate and "guid" in candidate and isinstance(candidate.get("mapping"), dict):
+        normalized_name = str(device_name or "").strip()
+        normalized_guid = str(device_guid or "").strip()
+        if str(candidate.get("name", "")).strip() == normalized_name and str(candidate.get("guid", "")).strip() == normalized_guid:
+            return _resolve_flat_action_mapping(candidate.get("mapping"))
+
+    if isinstance(candidate.get("default"), dict):
+        return _resolve_flat_action_mapping(candidate.get("default"))
+
+    return _resolve_flat_action_mapping(candidate)
 
 
 def get_default_action_mapping(device_name: str | None = None, config: dict | None = None):
@@ -215,7 +321,15 @@ def _clamp_focus_step(value: object, default: int = 100) -> int:
 
 def load_gui_settings(path: str | Path | None = None):
     config_path = Path(path) if path is not None else GUI_SETTINGS_PATH
-    defaults = {"controller": "", "host": "localhost", "port": 50007, "heartbeat": False, "focus_step": 100, "action_mapping": DEFAULT_ACTION_MAPPING.copy()}
+    defaults = {
+        "controller": "",
+        "controller_guid": "",
+        "host": "localhost",
+        "port": 50007,
+        "heartbeat": False,
+        "focus_step": 100,
+        "action_mapping": {"default": DEFAULT_ACTION_MAPPING.copy(), "controllers": []},
+    }
 
     if not config_path.exists():
         return defaults.copy()
@@ -230,6 +344,7 @@ def load_gui_settings(path: str | Path | None = None):
         return defaults.copy()
 
     controller = loaded.get("controller", "")
+    controller_guid = loaded.get("controller_guid", "")
     host = loaded.get("host", "localhost")
     port = loaded.get("port", 50007)
     heartbeat = loaded.get("heartbeat", False)
@@ -240,25 +355,33 @@ def load_gui_settings(path: str | Path | None = None):
     except (TypeError, ValueError):
         port_value = 50007
 
+    raw_mapping = loaded.get("action_mapping", DEFAULT_ACTION_MAPPING.copy())
+    normalized_mapping = _normalize_action_mapping_store(raw_mapping, controller_name=str(controller or ""), controller_guid=str(controller_guid or ""))
+
     return {
         "controller": str(controller) if controller is not None else "",
+        "controller_guid": str(controller_guid) if controller_guid is not None else "",
         "host": str(host) if host is not None else "localhost",
         "port": port_value,
         "heartbeat": bool(heartbeat),
         "focus_step": focus_step,
-        "action_mapping": resolve_action_mapping(loaded),
+        "action_mapping": normalized_mapping,
     }
 
 
 def save_gui_settings(settings: dict, path: str | Path | None = None):
     config_path = Path(path) if path is not None else GUI_SETTINGS_PATH
+    controller_name = str(settings.get("controller", "") or "")
+    controller_guid = str(settings.get("controller_guid", "") or "")
+    raw_mapping = settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy())
     payload = {
-        "controller": str(settings.get("controller", "") or ""),
+        "controller": controller_name,
+        "controller_guid": controller_guid,
         "host": str(settings.get("host", "localhost") or "localhost"),
         "port": int(settings.get("port", 50007) or 50007),
         "heartbeat": bool(settings.get("heartbeat", False)),
         "focus_step": _clamp_focus_step(settings.get("focus_step", 100), default=100),
-        "action_mapping": resolve_action_mapping(settings.get("action_mapping", {})),
+        "action_mapping": _normalize_action_mapping_store(raw_mapping, controller_name=controller_name, controller_guid=controller_guid),
     }
 
     with open(config_path, "w", encoding="utf-8") as handle:
@@ -1020,13 +1143,32 @@ class IndipadWindow(QMainWindow):
             self.worker._focus_step = self.gui_settings["focus_step"]
 
     def save_settings(self):
+        controller_name = self.controller_combo.currentText() if self.controller_combo.count() else ""
+        controller_guid = ""
+        if controller_name and controller_name not in {"No controller found", "Controller unavailable"}:
+            try:
+                import pygame as gui_pygame
+                if not gui_pygame.get_init():
+                    gui_pygame.init()
+                if not gui_pygame.joystick.get_init():
+                    gui_pygame.joystick.init()
+                for index in range(gui_pygame.joystick.get_count()):
+                    joy = gui_pygame.joystick.Joystick(index)
+                    joy.init()
+                    if get_device_name(joy) == controller_name:
+                        controller_guid = get_device_guid(joy)
+                        break
+            except Exception:
+                controller_guid = ""
+
         settings = {
-            "controller": self.controller_combo.currentText() if self.controller_combo.count() else "",
+            "controller": controller_name,
+            "controller_guid": controller_guid,
             "host": self.host_edit.text().strip() or "localhost",
             "port": int(self.port_edit.text().strip() or 50007),
             "heartbeat": self.heartbeat_checkbox.isChecked(),
             "focus_step": self.focus_step_spin.value(),
-            "action_mapping": resolve_action_mapping(self.gui_settings.get("action_mapping")),
+            "action_mapping": self.gui_settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy()),
         }
         if settings["controller"] in {"No controller found", "Controller unavailable"}:
             settings["controller"] = ""
@@ -1125,14 +1267,37 @@ class IndipadWindow(QMainWindow):
             QMessageBox.critical(self, "Invalid port", "Port must be an integer.")
             return
 
+        controller_guid = ""
+        if device_name:
+            try:
+                import pygame as gui_pygame
+                if not gui_pygame.get_init():
+                    gui_pygame.init()
+                if not gui_pygame.joystick.get_init():
+                    gui_pygame.joystick.init()
+                for index in range(gui_pygame.joystick.get_count()):
+                    joy = gui_pygame.joystick.Joystick(index)
+                    joy.init()
+                    if get_device_name(joy) == device_name:
+                        controller_guid = get_device_guid(joy)
+                        break
+            except Exception:
+                controller_guid = ""
+
         self.gui_settings = {
             "controller": device_name or "",
+            "controller_guid": controller_guid,
             "host": host,
             "port": port,
             "heartbeat": self.heartbeat_checkbox.isChecked(),
             "focus_step": self.focus_step_spin.value(),
-            "action_mapping": resolve_action_mapping(self.gui_settings.get("action_mapping")),
+            "action_mapping": self.gui_settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy()),
         }
+        self.gui_settings["action_mapping"] = _normalize_action_mapping_store(
+            self.gui_settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy()),
+            controller_name=device_name or "",
+            controller_guid=controller_guid,
+        )
         save_gui_settings(self.gui_settings)
 
         self.log(f"[gui] connecting to {host}:{port} using {device_name or 'auto'}")

@@ -649,6 +649,27 @@ class ProtocolTests(unittest.TestCase):
         mapping = sender.build_action_events({"dpad_down": True}, {}, action_map=resolved)
         self.assertIn({"action": "CUSTOM_NORTH", "pressed": True, "source": "dpad"}, mapping)
 
+    def test_action_mapping_uses_guid_and_name_to_select_controller_profile(self):
+        settings = {
+            "controller": "JC-U3712T",
+            "controller_guid": "guid-1",
+            "action_mapping": {
+                "default": {"dpad_down": "MOUNT_NORTH", "button_1": "FOCUS_STEP_UP"},
+                "controllers": [
+                    {"name": "JC-U3712T", "guid": "guid-1", "mapping": {"dpad_down": "CUSTOM_NORTH", "button_1": "CUSTOM_FOCUS_UP"}},
+                    {"name": "Xbox Controller", "guid": "guid-2", "mapping": {"dpad_down": "MOUNT_EAST", "button_1": "FOCUS_IN"}},
+                ],
+            },
+        }
+
+        resolved = sender.resolve_action_mapping(settings, device_name="JC-U3712T", device_guid="guid-1")
+        self.assertEqual(resolved["dpad_down"], "CUSTOM_NORTH")
+        self.assertEqual(resolved["button_1"], "CUSTOM_FOCUS_UP")
+
+        default_for_other = sender.resolve_action_mapping(settings, device_name="Xbox Controller", device_guid="guid-2")
+        self.assertEqual(default_for_other["dpad_down"], "MOUNT_EAST")
+        self.assertEqual(default_for_other["button_1"], "FOCUS_IN")
+
     def test_default_mapping_uses_gamepad_profile_value(self):
         config = sender.load_axis_config(Path("D:/Projects/RemoteINDIPAD/gamepad_profiles.json"))
         default_mapping = sender.get_default_action_mapping("JC-U3712T", config)
