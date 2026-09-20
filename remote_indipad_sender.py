@@ -1330,7 +1330,7 @@ class IndipadWindow(QMainWindow):
         self.controller_combo = QComboBox()
         self.host_edit = QLineEdit(self.gui_settings["host"])
         self.port_edit = QLineEdit(str(self.gui_settings["port"]))
-        self.heartbeat_checkbox = QCheckBox("Heartbeat log")
+        self.heartbeat_checkbox = QCheckBox("Heartbeat")
         self.heartbeat_checkbox.setChecked(bool(self.gui_settings["heartbeat"]))
         self.focus_step_spin = QSpinBox()
         self.focus_step_spin.setRange(1, 5000)
@@ -1343,7 +1343,7 @@ class IndipadWindow(QMainWindow):
         host_port_row.addWidget(self.host_edit)
         host_port_row.addWidget(self.port_edit)
         form_layout.addRow("Host / Port", host_port_row)
-        form_layout.addRow("Heartbeat", self.heartbeat_checkbox)
+        form_layout.addRow("Logs", self.heartbeat_checkbox)
         form_layout.addRow("Focus step", self.focus_step_spin)
 
         button_row = QHBoxLayout()
@@ -1358,6 +1358,11 @@ class IndipadWindow(QMainWindow):
         self.console.setReadOnly(True)
         self.console.setFont(QFont("Consolas", 10))
         self.console.setPlainText("INDIPAD console\n")
+        self.clear_console_button = QPushButton("Clear")
+        self.clear_console_button.clicked.connect(self.clear_console_log)
+        console_button_row = QHBoxLayout()
+        console_button_row.addStretch()
+        console_button_row.addWidget(self.clear_console_button)
 
         self.monitor_widget = QWidget()
         self.monitor_layout = QVBoxLayout(self.monitor_widget)
@@ -1468,6 +1473,7 @@ class IndipadWindow(QMainWindow):
         main_layout.addWidget(self.monitor_widget)
         self.console.setContentsMargins(0, 8, 0, 0)
         main_layout.addWidget(self.console)
+        main_layout.addLayout(console_button_row)
 
         self.connection_button.clicked.connect(self.on_toggle_connection)
         self.mapping_button.clicked.connect(self.on_edit_mapping)
@@ -1493,6 +1499,9 @@ class IndipadWindow(QMainWindow):
     def log(self, message: str):
         self.console.append(timestamp_log_message(message))
         self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+
+    def clear_console_log(self):
+        self.console.clear()
 
     def _apply_focus_step_value(self, value: int):
         clamped = _clamp_focus_step(value, default=100)

@@ -1063,7 +1063,7 @@ class ReceiverWindow(QMainWindow):
         self.host_edit = QLineEdit(str(self.gui_settings.get("host", "0.0.0.0")))
         self.port_edit = QLineEdit(str(self.gui_settings.get("port", 50007)))
 
-        self.heartbeat_checkbox = QCheckBox("Heartbeat log")
+        self.heartbeat_checkbox = QCheckBox("Heartbeat")
         self.heartbeat_checkbox.setChecked(bool(self.gui_settings.get("heartbeat", False)))
 
         filter_row = QHBoxLayout()
@@ -1080,7 +1080,7 @@ class ReceiverWindow(QMainWindow):
         host_port_row.addWidget(self.host_edit)
         host_port_row.addWidget(self.port_edit)
         form_layout.addRow("Listening IP / Port", host_port_row)
-        form_layout.addRow("Heartbeat", self.heartbeat_checkbox)
+        form_layout.addRow("Logs", self.heartbeat_checkbox)
 
         button_row = QHBoxLayout()
         self.scan_button = QPushButton("Scan INDI")
@@ -1095,10 +1095,16 @@ class ReceiverWindow(QMainWindow):
         self.console.setReadOnly(True)
         self.console.setFont(QFont("Consolas", 10))
         self.console.setPlainText("INDIPAD HOST console\n")
+        self.clear_console_button = QPushButton("Clear")
+        self.clear_console_button.clicked.connect(self.clear_console_log)
+        console_button_row = QHBoxLayout()
+        console_button_row.addStretch()
+        console_button_row.addWidget(self.clear_console_button)
 
         main_layout.addLayout(form_layout)
         main_layout.addLayout(button_row)
         main_layout.addWidget(self.console)
+        main_layout.addLayout(console_button_row)
 
         self.restore_saved_values()
         self.mount_combo.currentIndexChanged.connect(self._sync_active_indi_devices)
@@ -1116,6 +1122,9 @@ class ReceiverWindow(QMainWindow):
     def _append_log(self, message: str):
         self.console.append(message)
         self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+
+    def clear_console_log(self):
+        self.console.clear()
 
     def _flush_log_queue(self):
         for message in self.log_queue.drain():
