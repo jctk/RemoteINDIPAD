@@ -43,6 +43,7 @@ DEFAULT_GUI_SETTINGS = {
     "host": "0.0.0.0",
     "port": 50007,
     "heartbeat": False,
+    "window_geometry": {},
 }
 
 TELESCOPE_INTERFACE = 1 << 0
@@ -882,6 +883,16 @@ def load_gui_settings(path: str | Path | None = None):
     except (TypeError, ValueError):
         filter_slots = 0
 
+    window_geometry = loaded.get("window_geometry", {})
+    if not isinstance(window_geometry, dict):
+        window_geometry = {}
+    normalized_geometry = {}
+    for key in ("x", "y", "width", "height"):
+        try:
+            normalized_geometry[key] = int(window_geometry[key])
+        except (KeyError, TypeError, ValueError):
+            pass
+
     return {
         "mount": str(loaded.get("mount", "") or ""),
         "focuser": str(loaded.get("focuser", "") or ""),
@@ -891,6 +902,7 @@ def load_gui_settings(path: str | Path | None = None):
         "host": str(loaded.get("host", "0.0.0.0") or "0.0.0.0"),
         "port": port_value,
         "heartbeat": bool(loaded.get("heartbeat", False)),
+        "window_geometry": normalized_geometry,
     }
 
 
@@ -908,6 +920,16 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
     except (TypeError, ValueError):
         filter_slots = 0
 
+    window_geometry = settings.get("window_geometry", {})
+    if not isinstance(window_geometry, dict):
+        window_geometry = {}
+    normalized_geometry = {}
+    for key in ("x", "y", "width", "height"):
+        try:
+            normalized_geometry[key] = int(window_geometry[key])
+        except (KeyError, TypeError, ValueError):
+            pass
+
     payload = {
         "mount": str(settings.get("mount", "") or ""),
         "focuser": str(settings.get("focuser", "") or ""),
@@ -917,6 +939,7 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         "host": str(settings.get("host", "0.0.0.0") or "0.0.0.0"),
         "port": port_value,
         "heartbeat": bool(settings.get("heartbeat", False)),
+        "window_geometry": normalized_geometry,
     }
     with open(config_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
@@ -1019,6 +1042,9 @@ class ReceiverWindow(QMainWindow):
         self.setWindowTitle("INDIPAD HOST")
         self.resize(720, 420)
         self.gui_settings = load_gui_settings()
+        geometry = self.gui_settings.get("window_geometry", {})
+        if all(key in geometry for key in ("x", "y", "width", "height")):
+            self.setGeometry(geometry["x"], geometry["y"], max(300, geometry["width"]), max(240, geometry["height"]))
         self.log_queue = QueueLogHandler()
         self.receiver = Receiver(
             host=self.gui_settings.get("host", HOST),
@@ -1195,6 +1221,12 @@ class ReceiverWindow(QMainWindow):
             "host": self.host_edit.text().strip() or "0.0.0.0",
             "port": self.port_edit.text().strip() or "50007",
             "heartbeat": self.heartbeat_checkbox.isChecked(),
+            "window_geometry": {
+                "x": self.x(),
+                "y": self.y(),
+                "width": self.width(),
+                "height": self.height(),
+            },
         }
         if settings["mount"] in {"Not scanned"}:
             settings["mount"] = ""

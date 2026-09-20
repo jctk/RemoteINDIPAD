@@ -423,6 +423,7 @@ def load_gui_settings(path: str | Path | None = None):
         "heartbeat": False,
         "focus_step": 100,
         "action_mapping": {"controllers": []},
+        "window_geometry": {},
     }
 
     if not config_path.exists():
@@ -443,6 +444,15 @@ def load_gui_settings(path: str | Path | None = None):
     port = loaded.get("port", 50007)
     heartbeat = loaded.get("heartbeat", False)
     focus_step = _clamp_focus_step(loaded.get("focus_step", 100), default=100)
+    window_geometry = loaded.get("window_geometry", {})
+    if not isinstance(window_geometry, dict):
+        window_geometry = {}
+    normalized_geometry = {}
+    for key in ("x", "y", "width", "height"):
+        try:
+            normalized_geometry[key] = int(window_geometry[key])
+        except (KeyError, TypeError, ValueError):
+            pass
 
     try:
         port_value = int(port)
@@ -460,6 +470,7 @@ def load_gui_settings(path: str | Path | None = None):
         "heartbeat": bool(heartbeat),
         "focus_step": focus_step,
         "action_mapping": normalized_mapping,
+        "window_geometry": normalized_geometry,
     }
 
 
@@ -468,6 +479,15 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
     controller_name = str(settings.get("controller", "") or "")
     controller_guid = str(settings.get("controller_guid", "") or "")
     raw_mapping = settings.get("action_mapping", {"controllers": []})
+    window_geometry = settings.get("window_geometry", {})
+    if not isinstance(window_geometry, dict):
+        window_geometry = {}
+    normalized_geometry = {}
+    for key in ("x", "y", "width", "height"):
+        try:
+            normalized_geometry[key] = int(window_geometry[key])
+        except (KeyError, TypeError, ValueError):
+            pass
     payload = {
         "controller": controller_name,
         "controller_guid": controller_guid,
@@ -476,6 +496,7 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         "heartbeat": bool(settings.get("heartbeat", False)),
         "focus_step": _clamp_focus_step(settings.get("focus_step", 100), default=100),
         "action_mapping": _normalize_action_mapping_store(raw_mapping, controller_name=controller_name, controller_guid=controller_guid),
+        "window_geometry": normalized_geometry,
     }
 
     with open(config_path, "w", encoding="utf-8") as handle:
@@ -1316,6 +1337,9 @@ class IndipadWindow(QMainWindow):
         self.worker = None
         self.worker_thread = None
         self.gui_settings = load_gui_settings()
+        geometry = self.gui_settings.get("window_geometry", {})
+        if all(key in geometry for key in ("x", "y", "width", "height")):
+            self.setGeometry(geometry["x"], geometry["y"], max(300, geometry["width"]), max(240, geometry["height"]))
 
         # Central widget and main layout
         central = QWidget(self)
@@ -1539,6 +1563,12 @@ class IndipadWindow(QMainWindow):
             "heartbeat": self.heartbeat_checkbox.isChecked(),
             "focus_step": self.focus_step_spin.value(),
             "action_mapping": self.gui_settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy()),
+            "window_geometry": {
+                "x": self.x(),
+                "y": self.y(),
+                "width": self.width(),
+                "height": self.height(),
+            },
         }
         if settings["controller"] in {"No controller found", "Controller unavailable"}:
             settings["controller"] = ""
