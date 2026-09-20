@@ -6,6 +6,8 @@ import socket
 import sys
 import threading
 import time
+from datetime import datetime
+import builtins
 from pathlib import Path
 from typing import Optional
 
@@ -88,6 +90,48 @@ def clear_console() -> None:
 clear_console()
 
 
+_ORIGINAL_PRINT = builtins.print
+_LOG_TIMESTAMP_LENGTH = len("0000-00-00 00:00:00.000")
+
+
+def format_log_timestamp() -> str:
+    return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+
+def timestamp_log_message(message: str) -> str:
+    text = str(message)
+    if len(text) >= _LOG_TIMESTAMP_LENGTH and text[_LOG_TIMESTAMP_LENGTH - 3] == "." and text[4] == "-" and text[7] == "-":
+        return text
+    return f"{format_log_timestamp()} {text}"
+
+
+def protocol_log_suffix(payload: dict | None) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    timestamp = payload.get("ts")
+    if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)):
+        return ""
+    try:
+        local_time = datetime.fromtimestamp(timestamp).astimezone().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
+    except (OverflowError, OSError, ValueError):
+        return ""
+    return f" ts={local_time}"
+
+
+def append_protocol_log_time(message: str, payload: dict | None = None) -> str:
+    return f"{message}{protocol_log_suffix(payload)}"
+
+
+def console_print(*values, **kwargs):
+    if values and not any("\x1b" in str(value) for value in values):
+        values = (timestamp_log_message(kwargs.get("sep", " ").join(str(value) for value in values)),)
+        kwargs = {key: value for key, value in kwargs.items() if key != "sep"}
+    builtins.print(*values, **kwargs)
+
+
+print = console_print
+
+
 def _normalize_json_for_display(value):
     if isinstance(value, dict):
         normalized = {}
@@ -132,7 +176,7 @@ def extract_dpad_state(payload):
 
 def print_debug_json(label: str, value) -> None:
     rendered = format_debug_json(value)
-    print(f"{label}: {rendered}", flush=True)
+    print(f"{label}: {rendered}{protocol_log_suffix(value)}", flush=True)
 
 
 def _split_complete_json_lines(buffer: str) -> tuple[list[str], str]:
@@ -1540,12 +1584,13 @@ class Receiver:
         self.log_callback = log_callback
         self._stop_event = threading.Event()
 
-    def _emit_log(self, message: str):
+    def _emit_log(self, message: str, payload: dict | None = None):
         if message is None:
             return
+        message = append_protocol_log_time(message, payload)
         if self.log_callback is not None:
             try:
-                self.log_callback(str(message))
+                self.log_callback(timestamp_log_message(message))
                 return
             except Exception:
                 pass
@@ -1640,7 +1685,7 @@ class Receiver:
                                     last_seen = time.monotonic()
                                     heartbeat_lost = False
                                     if self.log_heartbeat:
-                                        self._emit_log(f"[receiver] heartbeat: {line}")
+                                        self._emit_log(f"[receiver] heartbeat: {line}", payload=obj)
                                     continue
                                 if obj.get("type") == "action":
                                     action = obj.get("action")

@@ -4,6 +4,8 @@ import socket
 import sys
 import threading
 import time
+from datetime import datetime
+import builtins
 from pathlib import Path
 
 try:
@@ -610,6 +612,48 @@ def clear_console() -> None:
 clear_console()
 
 
+_ORIGINAL_PRINT = builtins.print
+_LOG_TIMESTAMP_LENGTH = len("0000-00-00 00:00:00.000")
+
+
+def format_log_timestamp() -> str:
+    return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+
+def timestamp_log_message(message: str) -> str:
+    text = str(message)
+    if len(text) >= _LOG_TIMESTAMP_LENGTH and text[_LOG_TIMESTAMP_LENGTH - 3] == "." and text[4] == "-" and text[7] == "-":
+        return text
+    return f"{format_log_timestamp()} {text}"
+
+
+def protocol_log_suffix(payload: dict | None) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    timestamp = payload.get("ts")
+    if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)):
+        return ""
+    try:
+        local_time = datetime.fromtimestamp(timestamp).astimezone().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
+    except (OverflowError, OSError, ValueError):
+        return ""
+    return f" ts={local_time}"
+
+
+def append_protocol_log_time(message: str, payload: dict | None = None) -> str:
+    return f"{message}{protocol_log_suffix(payload)}"
+
+
+def console_print(*values, **kwargs):
+    if values and not any("\x1b" in str(value) for value in values):
+        values = (timestamp_log_message(kwargs.get("sep", " ").join(str(value) for value in values)),)
+        kwargs = {key: value for key, value in kwargs.items() if key != "sep"}
+    builtins.print(*values, **kwargs)
+
+
+print = console_print
+
+
 def _normalize_json_for_display(value):
     if isinstance(value, dict):
         normalized = {}
@@ -640,7 +684,10 @@ def print_debug_json(label: str, value) -> None:
     global _DEBUG_JSON_CURSOR_SAVED, _DEBUG_JSON_LAST_LINES
 
     rendered = format_debug_json(value)
-    lines = [f"{label}:"] + rendered.splitlines()
+    rendered_lines = rendered.splitlines()
+    if rendered_lines:
+        rendered_lines[-1] += protocol_log_suffix(value)
+    lines = [f"{format_log_timestamp()} {label}:"] + rendered_lines
     total_lines = len(lines)
 
     if not _DEBUG_JSON_CURSOR_SAVED:
@@ -1182,7 +1229,7 @@ class SenderWorker(QObject):
                     heartbeat = protocol.build_heartbeat_payload()
                     packet = protocol.serialize_message(heartbeat)
                     self._socket.sendall((packet + "\n").encode("utf-8"))
-                    self._safe_emit(self.log_received, f"[sender] heartbeat: {packet}")
+                    self._safe_emit(self.log_received, append_protocol_log_time(f"[sender] heartbeat: {packet}", heartbeat))
                     last_heartbeat = now
 
                 axes, buttons, dpad = read_gamepad_state(self._joy, load_axis_config())
@@ -1231,7 +1278,13 @@ class SenderWorker(QObject):
                         )
                         packet = protocol.serialize_message(message)
                         self._socket.sendall((packet + "\n").encode("utf-8"))
-                        self._safe_emit(self.log_received, json.dumps(message, ensure_ascii=False, separators=(",", ":")))
+                        self._safe_emit(
+                            self.log_received,
+                            append_protocol_log_time(
+                                json.dumps(message, ensure_ascii=False, separators=(",", ":")),
+                                message,
+                            ),
+                        )
                     previous_dpad = dpad.copy()
                     previous_buttons = buttons.copy()
                     previous_signature = signature
@@ -1438,7 +1491,7 @@ class IndipadWindow(QMainWindow):
         self.log("Ready")
 
     def log(self, message: str):
-        self.console.append(message)
+        self.console.append(timestamp_log_message(message))
         self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
 
     def _apply_focus_step_value(self, value: int):
