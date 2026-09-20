@@ -609,9 +609,6 @@ def clear_console() -> None:
         print("\033[2J\033[H", end="", flush=True)
 
 
-clear_console()
-
-
 _ORIGINAL_PRINT = builtins.print
 _LOG_TIMESTAMP_LENGTH = len("0000-00-00 00:00:00.000")
 
