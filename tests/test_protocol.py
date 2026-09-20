@@ -343,6 +343,27 @@ class ProtocolTests(unittest.TestCase):
         self.assertFalse(dpad.get("dpad_left", False))
         self.assertNotIn("dpad_right", buttons)
 
+    def test_gamepad_pov_y_direction_matches_pygame_convention(self):
+        class FakeJoy:
+            def __init__(self, hat):
+                self._hat = hat
+
+            def get_numaxes(self):
+                return 0
+
+            def get_numbuttons(self):
+                return 0
+
+            def get_hat(self, index):
+                return self._hat
+
+        _, _, up_dpad = sender.read_gamepad_state(FakeJoy((0, 1)))
+        _, _, down_dpad = sender.read_gamepad_state(FakeJoy((0, -1)))
+        self.assertTrue(up_dpad["dpad_up"])
+        self.assertFalse(up_dpad["dpad_down"])
+        self.assertFalse(down_dpad["dpad_up"])
+        self.assertTrue(down_dpad["dpad_down"])
+
     def test_receiver_extracts_dpad_state_from_payload(self):
         payload = {
             "axes": {"left_x": 0.0, "left_y": 0.0},
@@ -711,14 +732,14 @@ class ProtocolTests(unittest.TestCase):
 
     def test_dpad_to_abstract_action_mapping(self):
         mapping = sender.build_action_events({"dpad_up": False, "dpad_left": False, "dpad_right": False, "dpad_down": True}, {})
-        self.assertIn({"action": "MOUNT_NORTH", "pressed": True, "source": "dpad"}, mapping)
+        self.assertIn({"action": "MOUNT_SOUTH", "pressed": True, "source": "dpad"}, mapping)
 
         mapping = sender.build_action_events(
             {"dpad_up": False, "dpad_left": False, "dpad_right": False, "dpad_down": False},
             {},
             previous_dpad={"dpad_down": True},
         )
-        self.assertIn({"action": "MOUNT_NORTH", "pressed": False, "source": "dpad"}, mapping)
+        self.assertIn({"action": "MOUNT_SOUTH", "pressed": False, "source": "dpad"}, mapping)
         self.assertNotIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
 
     def test_dpad_stop_is_emitted_only_after_all_directions_are_released(self):
@@ -728,7 +749,7 @@ class ProtocolTests(unittest.TestCase):
             previous_dpad={"dpad_up": True, "dpad_left": False, "dpad_right": False, "dpad_down": False},
         )
         self.assertNotIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
-        self.assertIn({"action": "MOUNT_SOUTH", "pressed": False, "source": "dpad"}, mapping)
+        self.assertIn({"action": "MOUNT_NORTH", "pressed": False, "source": "dpad"}, mapping)
         self.assertIn({"action": "MOUNT_WEST", "pressed": True, "source": "dpad"}, mapping)
 
         mapping = sender.build_action_events(
@@ -785,7 +806,7 @@ class ProtocolTests(unittest.TestCase):
         resolved = sender.resolve_action_mapping(settings)
         self.assertEqual(resolved["dpad_down"], "CUSTOM_NORTH")
         self.assertEqual(resolved["button_6"], "CUSTOM_FOCUS_IN")
-        self.assertEqual(resolved["dpad_up"], "MOUNT_SOUTH")
+        self.assertEqual(resolved["dpad_up"], "MOUNT_NORTH")
 
         mapping = sender.build_action_events({"dpad_down": True}, {}, action_map=resolved)
         self.assertIn({"action": "CUSTOM_NORTH", "pressed": True, "source": "dpad"}, mapping)
@@ -811,10 +832,29 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(default_for_other["dpad_down"], "MOUNT_EAST")
         self.assertEqual(default_for_other["button_1"], "FOCUS_IN")
 
+    def test_sender_worker_resolves_selected_controller_mapping(self):
+        worker = sender.SenderWorker(
+            host="localhost",
+            port=50007,
+            device_name="JC-U3712T",
+            controller_guid="guid-1",
+            action_map={
+                "controllers": [
+                    {
+                        "name": "JC-U3712T",
+                        "guid": "guid-1",
+                        "mapping": {"dpad_up": "MOUNT_NORTH", "dpad_down": "MOUNT_SOUTH"},
+                    }
+                ]
+            },
+        )
+        self.assertEqual(worker.action_map["dpad_up"], "MOUNT_NORTH")
+        self.assertEqual(worker.action_map["dpad_down"], "MOUNT_SOUTH")
+
     def test_default_mapping_uses_gamepad_profile_value(self):
         config = sender.load_axis_config(Path("D:/Projects/RemoteINDIPAD/gamepad_profiles.json"))
         default_mapping = sender.get_default_action_mapping("JC-U3712T", config)
-        self.assertEqual(default_mapping["dpad_down"], "MOUNT_NORTH")
+        self.assertEqual(default_mapping["dpad_down"], "MOUNT_SOUTH")
         self.assertEqual(default_mapping["button_6"], "FOCUS_IN")
 
     def test_idle_state_does_not_emit_action_events(self):

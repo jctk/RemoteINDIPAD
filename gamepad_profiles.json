@@ -7,8 +7,8 @@
       "label": "ELECOM JC-U3712T",
       "description": "A gamepad manufactured by ELECOM. ",
       "action_mapping": {
-        "dpad_up": "MOUNT_SOUTH",
-        "dpad_down": "MOUNT_NORTH",
+        "dpad_up": "MOUNT_NORTH",
+        "dpad_down": "MOUNT_SOUTH",
         "dpad_left": "MOUNT_WEST",
         "dpad_right": "MOUNT_EAST",
         "button_1": "FOCUS_STEP_DOWN",
@@ -36,8 +36,8 @@
       "label": "8BitDo Zero 2 - X-input",
       "description": "The Zero 2 controller by 8BitDo. Settings for use in X-Input mode.",
       "action_mapping": {
-        "dpad_up": "MOUNT_SOUTH",
-        "dpad_down": "MOUNT_NORTH",
+        "dpad_up": "MOUNT_NORTH",
+        "dpad_down": "MOUNT_SOUTH",
         "dpad_left": "MOUNT_WEST",
         "dpad_right": "MOUNT_EAST",
         "button_1": "FOCUS_STEP_DOWN",
@@ -66,8 +66,8 @@
       "label": "Default Gamepad",
       "description": "Default profile for unrecognized or generic gamepads. Basic settings for use with unknown models.",
       "action_mapping": {
-        "dpad_up": "MOUNT_SOUTH",
-        "dpad_down": "MOUNT_NORTH",
+        "dpad_up": "MOUNT_NORTH",
+        "dpad_down": "MOUNT_SOUTH",
         "dpad_left": "MOUNT_WEST",
         "dpad_right": "MOUNT_EAST",
         "button_1": "FOCUS_STEP_UP",

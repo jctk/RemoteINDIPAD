@@ -1,3 +1,5 @@
+# Remote INDI Pad Sender Module
+
 import json
 import os
 import socket
@@ -43,7 +45,7 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
 
 import remote_indipad_protocol as protocol
 
-
+# Configuration and Constants
 HOST = "127.0.0.1"
 PORT = 50007
 DEADZONE = 0.08
@@ -58,8 +60,8 @@ DEFAULT_AXIS_CONFIG = {
     "axis_6": 5,
 }
 DEFAULT_ACTION_MAPPING = {
-    "dpad_up": "MOUNT_SOUTH",
-    "dpad_down": "MOUNT_NORTH",
+    "dpad_up": "MOUNT_NORTH",
+    "dpad_down": "MOUNT_SOUTH",
     "dpad_left": "MOUNT_WEST",
     "dpad_right": "MOUNT_EAST",
     "button_1": "FOCUS_STEP_UP",
@@ -601,7 +603,7 @@ def select_device_profile(joy, config=None, forced_device: str | None = None):
 
     return {"stick_axes": DEFAULT_AXIS_CONFIG.copy()}
 
-
+# Windows VT100 console support
 def enable_windows_vt100() -> None:
     if os.name != "nt" or ctypes is None:
         return
@@ -615,10 +617,10 @@ def enable_windows_vt100() -> None:
     except Exception:
         pass
 
-
+# Enable Windows VT100 console support
 enable_windows_vt100()
 
-
+# Clear the console screen
 def clear_console() -> None:
     if os.name == "nt":
         print("\x1b[2J\x1b[H", end="", flush=True)
@@ -629,22 +631,22 @@ def clear_console() -> None:
     else:
         print("\033[2J\033[H", end="", flush=True)
 
-
+# Timestamped console print functions
 _ORIGINAL_PRINT = builtins.print
 _LOG_TIMESTAMP_LENGTH = len("0000-00-00 00:00:00.000")
 
-
+# Format the current timestamp for log messages
 def format_log_timestamp() -> str:
     return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
-
+# Prepend a timestamp to the log message if it doesn't already have one
 def timestamp_log_message(message: str) -> str:
     text = str(message)
     if len(text) >= _LOG_TIMESTAMP_LENGTH and text[_LOG_TIMESTAMP_LENGTH - 3] == "." and text[4] == "-" and text[7] == "-":
         return text
     return f"{format_log_timestamp()} {text}"
 
-
+# Generate a protocol-specific log suffix based on the payload's timestamp
 def protocol_log_suffix(payload: dict | None) -> str:
     if not isinstance(payload, dict):
         return ""
@@ -657,21 +659,21 @@ def protocol_log_suffix(payload: dict | None) -> str:
         return ""
     return f" ts={local_time}"
 
-
+# Append the protocol-specific log time to a message
 def append_protocol_log_time(message: str, payload: dict | None = None) -> str:
     return f"{message}{protocol_log_suffix(payload)}"
 
-
+# Console print function with timestamping
 def console_print(*values, **kwargs):
     if values and not any("\x1b" in str(value) for value in values):
         values = (timestamp_log_message(kwargs.get("sep", " ").join(str(value) for value in values)),)
         kwargs = {key: value for key, value in kwargs.items() if key != "sep"}
     builtins.print(*values, **kwargs)
 
-
+# Override the built-in print function with the timestamped console print function
 print = console_print
 
-
+# JSON formatting and debug printing functions
 def _normalize_json_for_display(value):
     if isinstance(value, dict):
         normalized = {}
@@ -955,13 +957,16 @@ def _safe_joystick_axis(joy, index: int) -> float:
     except Exception:
         return 0.0
 
-
+# Gamepad State Reading Functions
 def read_gamepad_state(joy, axis_config=None):
+    # Normalize the axis configuration before reading the gamepad state
     config = _normalize_axis_config(axis_config)
 
+    # Read the gamepad state using the normalized axis configuration
     if pygame is not None and getattr(pygame, "get_init", lambda: False)():
         pygame.event.pump()
 
+    # Ensure the joystick is initialized before reading its state
     total_axes = int(getattr(joy, "get_numaxes", lambda: 0)())
     max_axis_count = max(
         total_axes,
@@ -978,6 +983,7 @@ def read_gamepad_state(joy, axis_config=None):
             physical_index = fallback_index
         axes[axis_name] = _safe_joystick_axis(joy, physical_index)
 
+    # Read the number of buttons available on the joystick
     button_count = int(getattr(joy, "get_numbuttons", lambda: 0)())
     buttons = {}
     for i in range(min(16, button_count)):
@@ -986,6 +992,7 @@ def read_gamepad_state(joy, axis_config=None):
         except Exception:
             buttons[f"button_{i + 1}"] = False
 
+    # Read the state of the directional pad (D-pad) if available
     dpad = {}
     if hasattr(joy, "get_hat"):
         try:
@@ -1003,8 +1010,8 @@ def read_gamepad_state(joy, axis_config=None):
                 hat_x, hat_y = (0, 0)
         except Exception:
             hat_x, hat_y = (0, 0)
-        dpad["dpad_up"] = hat_y == -1
-        dpad["dpad_down"] = hat_y == 1
+        dpad["dpad_up"] = hat_y == 1
+        dpad["dpad_down"] = hat_y == -1
         dpad["dpad_left"] = hat_x == -1
         dpad["dpad_right"] = hat_x == 1
 
@@ -1192,6 +1199,7 @@ class SenderWorker(QObject):
         host: str,
         port: int,
         device_name: str | None = None,
+        controller_guid: str | None = None,
         action_map: dict | None = None,
         focus_step: int = 100,
         focus_step_changed_callback=None,
@@ -1200,7 +1208,12 @@ class SenderWorker(QObject):
         self.host = host
         self.port = port
         self.device_name = device_name
-        self.action_map = resolve_action_mapping(action_map)
+        self.controller_guid = controller_guid
+        self.action_map = resolve_action_mapping(
+            action_map,
+            device_name=device_name,
+            device_guid=controller_guid,
+        )
         self._focus_step = _clamp_focus_step(focus_step, default=100)
         self._focus_step_changed_callback = focus_step_changed_callback
         self._stop_event = threading.Event()
@@ -1861,6 +1874,7 @@ class IndipadWindow(QMainWindow):
             host=host,
             port=port,
             device_name=device_name,
+            controller_guid=controller_guid,
             action_map=self.gui_settings.get("action_mapping"),
             focus_step=self.focus_step_spin.value(),
             focus_step_changed_callback=self._apply_focus_step_value,
