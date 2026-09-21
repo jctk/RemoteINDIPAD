@@ -274,51 +274,6 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(idle_a, idle_b)
         self.assertNotEqual(idle_a, changed)
 
-    def test_elecom_right_stick_axis_order_is_normalized(self):
-        class FakeJoy:
-            def __init__(self):
-                self._axes = {2: 0.8, 3: 0.0, 4: -0.7}
-
-            def get_axis(self, index):
-                return self._axes.get(index, 0.0)
-
-            def get_numaxes(self):
-                return 5
-
-            def get_name(self):
-                return "ELECOM JC-U3712T"
-
-        right_x, right_y = sender.resolve_right_stick_axes(FakeJoy())
-        self.assertAlmostEqual(right_x, 0.8)
-        self.assertAlmostEqual(right_y, -0.7)
-
-    def test_elecom_right_stick_keeps_raw_axis_values(self):
-        class FakeJoy:
-            def get_axis(self, index):
-                values = {2: 0.8, 4: 0.05}
-                return values.get(index, 0.0)
-
-            def get_numaxes(self):
-                return 5
-
-            def get_name(self):
-                return "JC-U3712T"
-
-        right_x, right_y = sender.resolve_right_stick_axes(FakeJoy())
-        self.assertAlmostEqual(right_x, 0.8)
-        self.assertAlmostEqual(right_y, 0.05)
-
-    def test_stick_axis_indices_follow_config_values(self):
-        class FakeJoy:
-            def get_axis(self, index):
-                values = {5: 0.8, 7: -0.4}
-                return values.get(index, 0.0)
-
-        axis_config = {"left_x": 0, "left_y": 1, "right_x": 5, "right_y": 7}
-        right_x, right_y = sender.resolve_right_stick_axes(FakeJoy(), axis_config)
-        self.assertAlmostEqual(right_x, 0.8)
-        self.assertAlmostEqual(right_y, -0.4)
-
     def test_gamepad_pov_is_exposed_as_dpad_buttons(self):
         class FakeJoy:
             def __init__(self):
@@ -505,8 +460,8 @@ class ProtocolTests(unittest.TestCase):
         config = {
             "default_device": "ELECOM JC-U3712T",
             "profiles": {
-                "ELECOM JC-U3712T": {"stick_axes": {"left_x": 0, "left_y": 1, "right_x": 2, "right_y": 4}},
-                "DualSense Wireless Controller": {"stick_axes": {"left_x": 0, "left_y": 1, "right_x": 3, "right_y": 5}},
+                "ELECOM JC-U3712T": {"stick_axes": {"axis_1": 0, "axis_2": 1, "axis_3": 2, "axis_4": 4}},
+                "DualSense Wireless Controller": {"stick_axes": {"axis_1": 0, "axis_2": 1, "axis_3": 3, "axis_4": 5}},
             },
         }
 

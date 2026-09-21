@@ -134,24 +134,12 @@ def _normalize_axis_config(axis_config):
         return DEFAULT_AXIS_CONFIG.copy()
 
     normalized = {}
-    legacy_alias_map = {
-        "left_x": "axis_1",
-        "left_y": "axis_2",
-        "right_x": "axis_3",
-        "right_y": "axis_4",
-    }
 
     for key, value in axis_config.items():
-        if not isinstance(key, str):
-            continue
-        if key.startswith("axis_"):
-            axis_key = key
-        else:
-            axis_key = legacy_alias_map.get(key, key)
-        if not axis_key.startswith("axis_"):
+        if not isinstance(key, str) or not key.startswith("axis_"):
             continue
         try:
-            normalized[axis_key] = int(value)
+            normalized[key] = int(value)
         except (TypeError, ValueError):
             continue
 
@@ -171,22 +159,14 @@ def _resolve_flat_action_mapping(mapping: dict | None):
     if not isinstance(mapping, dict):
         return resolved
 
-    legacy_action_alias_map = {
-        "left_x": "axis_1",
-        "left_y": "axis_2",
-        "right_x": "axis_3",
-        "right_y": "axis_4",
-    }
-
     for key, value in mapping.items():
         if not isinstance(key, str):
             continue
-        normalized_key = legacy_action_alias_map.get(key, key)
-        if not (normalized_key.startswith("dpad_") or normalized_key.startswith("button_") or normalized_key.startswith("axis_")):
+        if not (key.startswith("dpad_") or key.startswith("button_") or key.startswith("axis_")):
             continue
         if not isinstance(value, str):
             continue
-        resolved[normalized_key] = value.strip()
+        resolved[key] = value.strip()
 
     for key, value in DEFAULT_ACTION_MAPPING.items():
         if key not in resolved:
@@ -927,20 +907,6 @@ def init_gamepad(selected_device: str | None = None):
     joy = pygame.joystick.Joystick(selected_index)
     joy.init()
     return joy
-
-
-def resolve_right_stick_axes(joy, axis_config=None):
-    if axis_config is None:
-        try:
-            device_profile = select_device_profile(joy, load_axis_config())
-            config = _normalize_axis_config(device_profile.get("stick_axes", DEFAULT_AXIS_CONFIG.copy()))
-        except Exception:
-            config = _normalize_axis_config(DEFAULT_AXIS_CONFIG.copy())
-    else:
-        config = _normalize_axis_config(axis_config)
-    x_axis = int(config.get("axis_3", 2))
-    y_axis = int(config.get("axis_4", 3))
-    return float(joy.get_axis(x_axis)), float(joy.get_axis(y_axis))
 
 
 def _safe_joystick_axis(joy, index: int) -> float:
