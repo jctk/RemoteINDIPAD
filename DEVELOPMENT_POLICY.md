@@ -97,6 +97,9 @@
 - 現在選択されているゲームパッドで使用できない  DPAD / ボタン / スティック入力 がある場合は Mapping Editor に表示しない。例えば ボタンが 6 までしかない場合は ボタン 7 以降を表示しないなどを意味する。
 - Mapping Editor の保存ボタンで変更したマッピングを保存する。
 - 保存されたマッピングは設定ファイルの action_mapping に保持される。
+- AXIS は入力値の状態ごとに `NEGATIVE`（-1）、`CENTER`（0）、`POSITIVE`（1）の 3 つの action を設定できる。
+- AXIS の deadzone は設定ファイルの `deadzone` に保存する。値は 0.0 以上 1.0 以下とし、初期値は 0.08 とする。
+- マッピングを変更した場合、変更内容を操作へ反映するには受信側への再接続が必要である。
 
 ### 3.3 GUI - Linux
 
@@ -169,6 +172,19 @@ PS> .venv\Scripts\activate
 - 読み取った入力を抽象化操作に変換し送信する。
 - 入力の変化がない場合は送信を抑制し、無駄な通信を避ける。
 - 接続が切れた場合は自動再接続を試みる。
+
+#### AXIS 入力の実装方針
+
+- pygame から取得した AXIS の連続値は、deadzone を適用して次の 3 状態へ正規化する。
+  - `value < -deadzone`: `NEGATIVE`（-1）
+  - `abs(value) <= deadzone`: `CENTER`（0）
+  - `value > deadzone`: `POSITIVE`（1）
+- deadzone の設定値は `remote_indipad_sender.json` の `deadzone` から読み込み、保存時にも保持する。
+- deadzone の初期値は 0.08 とし、設定値は 0.0 から 1.0 の範囲に収める。
+- 各 AXIS は `NEGATIVE`、`CENTER`、`POSITIVE` の状態ごとに独立した抽象化操作を割り当てる。未使用の状態は空文字列で表す。
+- 接続直後の最初の AXIS 値は初期状態として扱う。初期値が -1、0、1 のいずれであっても、現在状態に割り当てられた action のみを押下状態として送信する。
+- 前回値が存在する場合は、状態が変化したときだけ前状態の release と現状態の press を送信する。
+- 未割り当て状態に対応する空の action は送信しない。したがって、`action` が空文字列のパケットは生成しない。
 
 ### 5.2 Linux 受信側スクリプト
 
@@ -245,9 +261,13 @@ $ source venv/bin/activate
 | フィルターホイール | FILTERWHEEL_NEXT | フィルターホイールのスロット番号を一つ増やす | ボタン12 |
 | ローテーター | CAA_ROTATE_COUNTER_CLOCKWISE | ローテーター反時計回り（角度減少方向の回転）。ボタンダウンまたはアップでCAA_ROTATE_COUNTER_CLOCKWISEを送信 | ボタン3 |
 | ローテーター | CAA_ROTATE_CLOCKWISE | ローテーター時計回り（角度増加方向の回転）ボタンダウンまたはアップCAA_ROTATE_CLOCKWISEを送信 | ボタン4 |
-| KStars SkyMap | SKYMAP_MOVE | SkyMap の移動 | 左スティック（上下左右で画面に対して上下左右の移動） |
-| KStars SkyMap | SKYMAP_ZOOM | SkyMap のZoom In/Out | 右スティック（上下） |
-| KStars SkyMap | SKYMAP_ROTATE | SkyMap の回転 | 右スティック（左右） |
+| KStars SkyMap | SKYMAP_UP / SKYMAP_DOWN | SkyMap の移動 | 左スティック（上下で画面に対して上下の移動） |
+| KStars SkyMap | SKYMAP_LEFT / SKYMAN_RIGHT | SkyMap の移動 | 左スティック（左右で画面に対して左右の移動） |
+| KStars SkyMap | SKYMAP_ZOOM_IN / SKYMAP_ZOOM_OUT | SkyMap のZoom In/Out | 右スティック（上下） |
+| KStars SkyMap | SKYMAP_ROTATE_UP / SKYMAP_ROTATE_DOWN | SkyMap の回転 | 右スティック（左右） |
+
+- AXIS の具体的な状態別マッピングは `gamepad_profiles.json` および `remote_indipad_sender.json` の `action_mapping` に定義する。
+- AXIS の各状態に割り当てる action が空文字列の場合、その状態に入っても送信イベントは発生しない。
 
 ### 7.2 受信側の抽象化操作と観測デバイスの制御
 
@@ -317,15 +337,21 @@ $ source venv/bin/activate
 #### KStars SkyMap
 
 - KStars の SkyMap の視野をアナログスティックで制御する。
-- 送信側: スティックが倒されている場合に前回送信値から変化した場合は抽象化操作名とその倒されている量（x, y）もしくは(x)か(y)を送信する。
-- 受信側: 抽象化操作名を受信した場合は合わせて受信した(x, y)の値を移動量として指定の操作を開始する。移動量が(0, 0)もしくは(0)の場合は当該操作を停止する。
+- 送信側: AXIS の値を -1, 0, 1 に正規化し、それぞれに割り当てられた抽象化操作を送信する。
+AXISが前回状態から変化した場合に、状態に割り当てられた抽象化操作の press/release を送信する。
+- 受信側: 抽象化操作名を受信した場合は合わせて受信した(x, y)の値を移動量として指定の操作を開始する。
 - マウントやFOVは移動させない。
 
 | 抽象化操作名 | 動作 |
 | - | - |
-| SKYMAP_MOVE | SkyMap の移動。上下左右で画面に対して上下左右の移動）。(x, y)が移動量として送信される。 |
-| SKYMAP_ZOOM | SkyMap のZoom In/Out。右スティック（上下）。(y)が移動量として送信される。 |
-| SKYMAP_ROTATE | SkyMap の回転。右スティック（左右）。(x)が移動量として送信される。 |
+| SKYMAP_UP / SKYMAP_DOWN / SKYMAP_LEFT / SKYMAP_RIGHT | SkyMap の移動。上下左右で画面に対して上下左右の移動をする。 |
+| SKYMAP_ZOOM_IN / SKYMAP_ZOOM_OUT | SkyMap のZoom In/Out。右スティック（上下）。状態に応じて Zoom In / Zoom Out を送信する。 |
+| SKYMAP_ROTATE_UP / SKYMAP_ROTATE_DOWN | SkyMap の回転。右スティック（左右）。状態に応じて回転方向を送信する。 |
+
+#### AXIS の送信イベント
+
+- AXIS に割り当てられた action は、状態に入ったときに `pressed: true`、状態から出たときに `pressed: false` で送信する。
+- AXIS の初期状態は前回状態が存在しないことにより判定する。
 
 ## 8. 安全性と運用上の考慮
 
@@ -374,6 +400,7 @@ $ source venv/bin/activate
 ### 9.1 単体テスト
 
 - 送信側: ゲームパッド値の抽象化操作への変換が期待どおりであることを確認。
+- 送信側: AXIS の deadzone 境界、`NEGATIVE` / `CENTER` / `POSITIVE` の正規化、初期状態、状態遷移、未割り当て action の非送信を確認する。
 - 受信側: 抽象化操作に対応する観測デバイス操作コマンドが意図通りであることを確認。
 
 ### 9.2 通信テスト
