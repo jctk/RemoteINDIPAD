@@ -199,6 +199,28 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(len(window.gui_settings["action_mapping"]["controllers"]), 2)
         self.assertEqual(window.gui_settings["action_mapping"]["controllers"][0]["mapping"]["axis_4"], "")
 
+    def test_mapping_editor_save_keeps_window_open(self):
+        window = sender.MappingEditorWindow.__new__(sender.MappingEditorWindow)
+        window.input_rows = {
+            "axis_1": type("FakeCombo", (), {"currentText": lambda self: "SKYMAP_MOVE"})(),
+            "button_1": type("FakeCombo", (), {"currentText": lambda self: "Unassigned"})(),
+        }
+        window.mapping = {}
+        emitted = {}
+
+        class FakeSignal:
+            def emit(self, value):
+                emitted["mapping"] = value
+
+        window.mapping_applied = FakeSignal()
+        window.closed = False
+        window.close = lambda: setattr(window, "closed", True)
+
+        window.apply_mapping()
+
+        self.assertFalse(window.closed)
+        self.assertEqual(emitted["mapping"]["axis_1"], "SKYMAP_MOVE")
+
     def test_gui_settings_round_trip_includes_focus_step(self):
         settings = {
             "controller": "JC-U3712T",

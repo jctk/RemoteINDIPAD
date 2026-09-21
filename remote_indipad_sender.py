@@ -1789,6 +1789,11 @@ class MappingEditorWindow(QMainWindow):
         top_row.addWidget(self.reset_button)
         layout.addLayout(top_row)
 
+        self.reconnect_note = QLabel("The changes will take effect after reconnect to the host.")
+        self.reconnect_note.setWordWrap(True)
+        self.reconnect_note.setStyleSheet("color: #f0f0f0;")
+        layout.addWidget(self.reconnect_note)
+
         self.form = QWidget()
         self.form_layout = QFormLayout(self.form)
         self.input_rows = {}
@@ -1846,7 +1851,6 @@ class MappingEditorWindow(QMainWindow):
                 next_mapping[key] = value
         self.mapping = resolve_action_mapping(next_mapping)
         self.mapping_applied.emit(self.mapping)
-        self.close()
 
 
 def run_gui():
