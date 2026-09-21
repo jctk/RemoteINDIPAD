@@ -94,9 +94,13 @@ AVAILABLE_ACTIONS = [
     "CAA_ROTATE_COUNTER_CLOCKWISE",
     "CAA_ROTATE_CLOCKWISE",
     "SKYMAP_MOVE",
-    "SKYMAP_ZOOM",
-    "SKYMAP_ROTATE",
+    "SKYMAP_ZOOM_IN",
+    "SKYMAP_ZOOM_OUT",
+    "SKYMAP_ROTATE_UP",
+    "SKYMAP_ROTATE_DOWN",
 ]
+AXIS_STATE_NAMES = {-1: "NEGATIVE", 0: "CENTER", 1: "POSITIVE"}
+AXIS_STATES = ("NEGATIVE", "CENTER", "POSITIVE")
 
 _DEBUG_JSON_CURSOR_SAVED = False
 _DEBUG_JSON_LAST_LINES = 0
@@ -118,6 +122,9 @@ def _resolve_flat_action_mapping(mapping: dict | None):
         if not isinstance(key, str):
             continue
         if not (key.startswith("dpad_") or key.startswith("button_") or key.startswith("axis_")):
+            continue
+        if key.startswith("axis_") and isinstance(value, dict):
+            resolved[key] = _axis_state_mapping_for_value(value)
             continue
         if not isinstance(value, str):
             continue
@@ -350,6 +357,14 @@ def _clamp_focus_step(value: object, default: int = 100) -> int:
     return step
 
 
+def _clamp_deadzone(value: object, default: float = DEADZONE) -> float:
+    try:
+        deadzone = float(value)
+    except (TypeError, ValueError):
+        return default
+    return min(max(deadzone, 0.0), 1.0)
+
+
 def load_gui_settings(path: str | Path | None = None):
     config_path = Path(path) if path is not None else GUI_SETTINGS_PATH
     defaults = {
@@ -359,6 +374,7 @@ def load_gui_settings(path: str | Path | None = None):
         "port": 50007,
         "heartbeat": False,
         "focus_step": 100,
+        "deadzone": DEADZONE,
         "action_mapping": {"controllers": []},
         "window_geometry": {},
     }
@@ -381,6 +397,7 @@ def load_gui_settings(path: str | Path | None = None):
     port = loaded.get("port", 50007)
     heartbeat = loaded.get("heartbeat", False)
     focus_step = _clamp_focus_step(loaded.get("focus_step", 100), default=100)
+    deadzone = _clamp_deadzone(loaded.get("deadzone", DEADZONE))
     window_geometry = loaded.get("window_geometry", {})
     if not isinstance(window_geometry, dict):
         window_geometry = {}
@@ -406,6 +423,7 @@ def load_gui_settings(path: str | Path | None = None):
         "port": port_value,
         "heartbeat": bool(heartbeat),
         "focus_step": focus_step,
+        "deadzone": deadzone,
         "action_mapping": normalized_mapping,
         "window_geometry": normalized_geometry,
     }
@@ -432,6 +450,7 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         "port": int(settings.get("port", 50007) or 50007),
         "heartbeat": bool(settings.get("heartbeat", False)),
         "focus_step": _clamp_focus_step(settings.get("focus_step", 100), default=100),
+        "deadzone": _clamp_deadzone(settings.get("deadzone", DEADZONE)),
         "action_mapping": _normalize_action_mapping_store(raw_mapping, controller_name=controller_name, controller_guid=controller_guid),
         "window_geometry": normalized_geometry,
     }
@@ -606,17 +625,54 @@ def print_debug_json(label: str, value) -> None:
     _DEBUG_JSON_LAST_LINES = total_lines
 
 
-def apply_deadzone(value: float) -> float:
-    if abs(value) < DEADZONE:
+def apply_deadzone(value: float, deadzone: float | None = None) -> float:
+    zone = DEADZONE if deadzone is None else _clamp_deadzone(deadzone)
+    if abs(value) < zone:
         return 0.0
     return value
 
 
-def normalize_axes(raw_axes):
+def normalize_axis_value(value: float, deadzone: float | None = None) -> int:
+    zone = float(DEADZONE if deadzone is None else deadzone)
+    numeric = float(value)
+    if numeric < -zone:
+        return -1
+    if abs(numeric) <= zone:
+        return 0
+    return 1
+
+
+def normalize_axes(raw_axes, deadzone: float | None = None):
     normalized = {}
     for key, value in raw_axes.items():
-        normalized[key] = apply_deadzone(float(value))
+        normalized[key] = apply_deadzone(float(value), deadzone)
     return normalized
+
+
+def _axis_state_mapping_for_value(value):
+    if isinstance(value, dict):
+        normalized = {}
+        for state_name in AXIS_STATES:
+            action = value.get(state_name, "")
+            if isinstance(action, str):
+                normalized[state_name] = action.strip()
+            else:
+                normalized[state_name] = ""
+        return normalized
+    if isinstance(value, str):
+        return {"NEGATIVE": "", "CENTER": "", "POSITIVE": value.strip()}
+    return {"NEGATIVE": "", "CENTER": "", "POSITIVE": ""}
+
+
+def _coerce_axis_mapping(mapping: dict | None):
+    if not isinstance(mapping, dict):
+        return {}
+    coerced = {}
+    for key, value in mapping.items():
+        if not isinstance(key, str) or not key.startswith("axis_"):
+            continue
+        coerced[key] = _axis_state_mapping_for_value(value)
+    return coerced
 
 
 def state_signature(axes, buttons, dpad=None):
@@ -631,6 +687,8 @@ def state_signature(axes, buttons, dpad=None):
 def build_action_events(
     dpad: dict | None = None,
     buttons: dict | None = None,
+    axes: dict | None = None,
+    previous_axes: dict | None = None,
     previous_dpad: dict | None = None,
     previous_buttons: dict | None = None,
     action_map: dict | None = None,
@@ -638,13 +696,19 @@ def build_action_events(
     focus_step_state: dict | None = None,
     button_press_times: dict | None = None,
     now: float | None = None,
+    deadzone: float | None = None,
 ):
     dpad = {} if dpad is None else dpad
     buttons = {} if buttons is None else buttons
+    axes = {} if axes is None else axes
+    previous_axes = {} if previous_axes is None else previous_axes
     previous_dpad = {} if previous_dpad is None else previous_dpad
     previous_buttons = {} if previous_buttons is None else previous_buttons
     if button_press_times is None:
         button_press_times = {}
+    if previous_axes and previous_buttons == {} and all(isinstance(key, str) and key.startswith("button_") for key in previous_axes):
+        previous_buttons = dict(previous_axes)
+        previous_axes = {}
     now = time.monotonic() if now is None else float(now)
     events = []
     resolved_map = resolve_action_mapping(action_map)
@@ -678,7 +742,8 @@ def build_action_events(
         previous_pressed = bool(previous_dpad.get(name))
         if current_pressed != previous_pressed:
             action_name = resolved_map.get(name, DEFAULT_ACTION_MAPPING.get(name, name))
-            events.append({"action": action_name, "pressed": current_pressed, "source": "dpad"})
+            if action_name:
+                events.append({"action": action_name, "pressed": current_pressed, "source": "dpad"})
 
     for key, action in resolved_map.items():
         if not key.startswith("button_"):
@@ -687,6 +752,8 @@ def build_action_events(
             current_pressed = bool(buttons.get(key))
             previous_pressed = bool(previous_buttons.get(key))
             if current_pressed != previous_pressed:
+                if not action:
+                    continue
                 if action == "FOCUS_STEP_UP":
                     if current_pressed:
                         advance_step("up")
@@ -706,6 +773,27 @@ def build_action_events(
                 if action in {"FOCUS_IN", "FOCUS_OUT"}:
                     event["step"] = base_focus_step
                 events.append(event)
+
+    for axis_key, raw_value in (axes or {}).items():
+        if not isinstance(axis_key, str) or not axis_key.startswith("axis_"):
+            continue
+        axis_state = normalize_axis_value(raw_value, deadzone)
+        previous_value = previous_axes.get(axis_key)
+        previous_state = None if previous_value is None else normalize_axis_value(previous_value, deadzone)
+        state_mapping = _axis_state_mapping_for_value(resolved_map.get(axis_key, {}))
+        if previous_state is None:
+            current_action = state_mapping.get(AXIS_STATE_NAMES.get(axis_state, "CENTER"), "")
+            if current_action:
+                events.append({"action": current_action, "pressed": True, "source": "axis"})
+            continue
+        if previous_state == axis_state:
+            continue
+        previous_action = state_mapping.get(AXIS_STATE_NAMES.get(previous_state, "CENTER"), "")
+        current_action = state_mapping.get(AXIS_STATE_NAMES.get(axis_state, "CENTER"), "")
+        if previous_action:
+            events.append({"action": previous_action, "pressed": False, "source": "axis"})
+        if current_action:
+            events.append({"action": current_action, "pressed": True, "source": "axis"})
 
     for key in list(button_press_times):
         if key.startswith("button_") and key in buttons and not bool(buttons.get(key)):
@@ -940,7 +1028,7 @@ def demo_buttons(step: int):
     return buttons
 
 
-def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: bool = False, forced_device: str | None = None, action_map: dict | None = None):
+def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: bool = False, forced_device: str | None = None, action_map: dict | None = None, deadzone: float = DEADZONE):
     joy = None
     resolved_action_map = resolve_action_mapping(action_map)
     if demo:
@@ -977,6 +1065,7 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
         heartbeat_interval = 1.0
         previous_dpad = {}
         previous_buttons = {}
+        previous_axes = {}
         button_press_times = {}
         while True:
             now = time.monotonic()
@@ -994,7 +1083,7 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
                 dpad = {"dpad_up": False, "dpad_down": False, "dpad_left": False, "dpad_right": False}
             else:
                 axes, buttons, dpad = read_gamepad_state(joy)
-            axes = normalize_axes(axes)
+            axes = normalize_axes(axes, deadzone)
             buttons = {k: bool(v) for k, v in buttons.items()}
             dpad = {k: bool(v) for k, v in dpad.items()}
 
@@ -1004,6 +1093,8 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
                 action_events = build_action_events(
                     dpad=dpad,
                     buttons=buttons,
+                    axes=axes,
+                    previous_axes=previous_axes,
                     previous_dpad=previous_dpad,
                     previous_buttons=previous_buttons,
                     action_map=resolved_action_map,
@@ -1011,6 +1102,7 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
                     focus_step_state=focus_state,
                     button_press_times=button_press_times,
                     now=now,
+                    deadzone=deadzone,
                 )
                 for event in action_events:
                     message = protocol.build_action_payload(
@@ -1026,6 +1118,7 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
                         sock.sendall((packet + "\n").encode("utf-8"))
                 previous_dpad = dpad.copy()
                 previous_buttons = buttons.copy()
+                previous_axes = axes.copy()
                 last_signature = signature
 
             step += 1
@@ -1046,6 +1139,7 @@ class SenderWorker(QObject):
         controller_guid: str | None = None,
         action_map: dict | None = None,
         focus_step: int = 100,
+        deadzone: float = DEADZONE,
         focus_step_changed_callback=None,
     ):
         super().__init__()
@@ -1059,6 +1153,7 @@ class SenderWorker(QObject):
             device_guid=controller_guid,
         )
         self._focus_step = _clamp_focus_step(focus_step, default=100)
+        self._deadzone = _clamp_deadzone(deadzone)
         self._focus_step_changed_callback = focus_step_changed_callback
         self._stop_event = threading.Event()
         self._socket = None
@@ -1095,6 +1190,7 @@ class SenderWorker(QObject):
             last_heartbeat = 0.0
             previous_dpad = {}
             previous_buttons = {}
+            previous_axes = {}
             button_press_times = {}
             previous_signature = None
             last_snapshot = None
@@ -1108,7 +1204,7 @@ class SenderWorker(QObject):
                     last_heartbeat = now
 
                 axes, buttons, dpad = read_gamepad_state(self._joy)
-                axes = normalize_axes(axes)
+                axes = normalize_axes(axes, self._deadzone)
                 buttons = {k: bool(v) for k, v in buttons.items()}
                 dpad = {k: bool(v) for k, v in dpad.items()}
                 snapshot = build_gamepad_monitor_snapshot(
@@ -1133,6 +1229,8 @@ class SenderWorker(QObject):
                     action_events = build_action_events(
                         dpad=dpad,
                         buttons=buttons,
+                        axes=axes,
+                        previous_axes=previous_axes,
                         previous_dpad=previous_dpad,
                         previous_buttons=previous_buttons,
                         action_map=self.action_map,
@@ -1140,6 +1238,7 @@ class SenderWorker(QObject):
                         focus_step_state=focus_step_state,
                         button_press_times=button_press_times,
                         now=now,
+                        deadzone=self._deadzone,
                     )
                     for event in action_events:
                         if event["action"] in {"FOCUS_STEP_UP", "FOCUS_STEP_DOWN"}:
@@ -1162,6 +1261,7 @@ class SenderWorker(QObject):
                         )
                     previous_dpad = dpad.copy()
                     previous_buttons = buttons.copy()
+                    previous_axes = axes.copy()
                     previous_signature = signature
 
                 self._focus_step = _clamp_focus_step(focus_step_state["value"], default=100)
@@ -1419,6 +1519,7 @@ class IndipadWindow(QMainWindow):
             "port": int(self.port_edit.text().strip() or 50007),
             "heartbeat": self.heartbeat_checkbox.isChecked(),
             "focus_step": self.focus_step_spin.value(),
+            "deadzone": self.gui_settings.get("deadzone", DEADZONE),
             "action_mapping": self.gui_settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy()),
             "window_geometry": {
                 "x": self.x(),
@@ -1469,7 +1570,7 @@ class IndipadWindow(QMainWindow):
             selected_joy = gui_pygame.joystick.Joystick(selected_index)
             selected_joy.init()
             axes, buttons, dpad = read_gamepad_state(selected_joy)
-            axes = normalize_axes(axes)
+            axes = normalize_axes(axes, self.gui_settings.get("deadzone", DEADZONE))
             buttons = {k: bool(v) for k, v in buttons.items()}
             dpad = {k: bool(v) for k, v in dpad.items()}
             self.update_monitor_snapshot(build_gamepad_monitor_snapshot(
@@ -1704,6 +1805,7 @@ class IndipadWindow(QMainWindow):
             "port": port,
             "heartbeat": self.heartbeat_checkbox.isChecked(),
             "focus_step": self.focus_step_spin.value(),
+            "deadzone": self.gui_settings.get("deadzone", DEADZONE),
             "action_mapping": self.gui_settings.get("action_mapping", {"controllers": []}),
         }
         self.gui_settings["action_mapping"] = _normalize_action_mapping_store(
@@ -1721,6 +1823,7 @@ class IndipadWindow(QMainWindow):
             controller_guid=controller_guid,
             action_map=self.gui_settings.get("action_mapping"),
             focus_step=self.focus_step_spin.value(),
+            deadzone=self.gui_settings.get("deadzone", DEADZONE),
             focus_step_changed_callback=self._apply_focus_step_value,
         )
         self.worker.status_changed.connect(lambda text: self.log(f"[gui] status: {text}"))
@@ -1799,6 +1902,30 @@ class MappingEditorWindow(QMainWindow):
         self.input_rows = {}
 
         for label, key in get_gamepad_input_rows(self.selected_device):
+            if key.startswith("axis_"):
+                axis_row = QWidget()
+                axis_layout = QHBoxLayout(axis_row)
+                axis_layout.setContentsMargins(0, 0, 0, 0)
+                axis_layout.setSpacing(8)
+                axis_states = {}
+                axis_mapping = self.mapping.get(key, {}) if isinstance(self.mapping.get(key, {}), dict) else {}
+                for state_name, state_value in zip(AXIS_STATES, (-1, 0, 1)):
+                    box = QComboBox()
+                    box.addItems(["Unassigned"] + AVAILABLE_ACTIONS[1:])
+                    current_value = str(axis_mapping.get(state_name, "") or "")
+                    match_index = 0
+                    for index in range(box.count()):
+                        if box.itemText(index) == current_value:
+                            match_index = index
+                            break
+                    box.setCurrentIndex(match_index)
+                    axis_states[state_name] = box
+                    axis_layout.addWidget(QLabel(str(state_value)))
+                    axis_layout.addWidget(box)
+                self.input_rows[key] = axis_states
+                self.form_layout.addRow(label, axis_row)
+                continue
+
             box = QComboBox()
             box.addItems(["Unassigned"] + AVAILABLE_ACTIONS[1:])
             current_value = self.mapping.get(key, "")
@@ -1834,6 +1961,16 @@ class MappingEditorWindow(QMainWindow):
     def reset_to_default(self):
         self.mapping = get_default_action_mapping(self.selected_device, load_axis_config())
         for key, combo in self.input_rows.items():
+            if key.startswith("axis_") and isinstance(combo, dict):
+                current_map = self.mapping.get(key, {}) if isinstance(self.mapping.get(key, {}), dict) else {}
+                for state_name, state_combo in combo.items():
+                    value = current_map.get(state_name, "")
+                    if value and value in [item for item in AVAILABLE_ACTIONS if item]:
+                        state_combo.setCurrentText(value)
+                    else:
+                        state_combo.setCurrentIndex(0)
+                continue
+
             value = self.mapping.get(key, "")
             if value and value in [item for item in AVAILABLE_ACTIONS if item]:
                 combo.setCurrentText(value)
@@ -1843,6 +1980,15 @@ class MappingEditorWindow(QMainWindow):
     def apply_mapping(self):
         next_mapping = {}
         for key, combo in self.input_rows.items():
+            if key.startswith("axis_") and isinstance(combo, dict):
+                next_mapping[key] = {}
+                for state_name, state_combo in combo.items():
+                    value = state_combo.currentText().strip()
+                    if value == "Unassigned":
+                        next_mapping[key][state_name] = ""
+                    elif value:
+                        next_mapping[key][state_name] = value
+                continue
             value = combo.currentText().strip()
             if value == "Unassigned":
                 next_mapping[key] = ""

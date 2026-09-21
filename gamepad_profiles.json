@@ -23,11 +23,31 @@
         "button_10": "FOCUS_STOP",
         "button_11": "FILTERWHEEL_PREV",
         "button_12": "FILTERWHEEL_NEXT",
-        "axis_1": "SKYMAP_MOVE",
-        "axis_2": "SKYMAP_MOVE",
-        "axis_3": "SKYMAP_ROTATE",
-        "axis_4": "",
-        "axis_5": "SKYMAP_ZOOM"
+        "axis_1": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_2": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_3": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_4": {
+          "NEGATIVE": "SKYMAP_ROTATE_DOWN",
+          "CENTER": "",
+          "POSITIVE": "SKYMAP_ROTATE_UP"
+        },
+        "axis_5": {
+          "NEGATIVE": "SKYMAP_ZOOM_OUT",
+          "CENTER": "",
+          "POSITIVE": "SKYMAP_ZOOM_IN"
+        }
       }
     },
     "Xbox One S Controller": {
@@ -52,12 +72,36 @@
         "button_10": "FOCUS_STOP",
         "button_11": "",
         "button_12": "",
-        "axis_1": "SKYMAP_MOVE",
-        "axis_2": "SKYMAP_MOVE",
-        "axis_3": "SKYMAP_ROTATE",
-        "axis_4": "SKYMAP_ZOOM",
-        "axis_5": "",
-        "axis_6": ""
+        "axis_1": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_2": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_3": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_4": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_5": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_6": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        }
       }
     },
     "default": {
@@ -80,12 +124,36 @@
         "button_8": "FOCUS_OUT",
         "button_9": "MOUNT_STOP",
         "button_10": "FOCUS_STOP",
-        "axis_1": "SKYMAP_MOVE",
-        "axis_2": "SKYMAP_MOVE",
-        "axis_3": "SKYMAP_ROTATE",
-        "axis_4": "SKYMAP_ZOOM",
-        "axis_5": "",
-        "axis_6": ""
+        "axis_1": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_2": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_3": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_4": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_5": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_6": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        }
       }
     }
   }

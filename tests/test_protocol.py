@@ -228,6 +228,7 @@ class ProtocolTests(unittest.TestCase):
             "port": 50007,
             "heartbeat": False,
             "focus_step": 250,
+            "deadzone": 0.6,
             "action_mapping": {"button_1": "FOCUS_STEP_UP"},
         }
         path = Path("test_sender_gui_settings.json")
@@ -235,6 +236,7 @@ class ProtocolTests(unittest.TestCase):
             sender.save_gui_settings(settings, path)
             loaded = sender.load_gui_settings(path)
             self.assertEqual(loaded["focus_step"], 250)
+            self.assertEqual(loaded["deadzone"], 0.6)
         finally:
             if path.exists():
                 path.unlink()
@@ -288,6 +290,34 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(axes["left_x"], 0.0)
         self.assertEqual(axes["left_y"], 0.0)
         self.assertEqual(axes["right_y"], 0.12)
+
+    def test_axis_normalizes_deadzone_and_initial_state(self):
+        self.assertEqual(sender.normalize_axis_value(-0.2, 0.1), -1)
+        self.assertEqual(sender.normalize_axis_value(-0.09, 0.1), 0)
+        self.assertEqual(sender.normalize_axis_value(0.0, 0.1), 0)
+        self.assertEqual(sender.normalize_axis_value(0.12, 0.1), 1)
+
+        mapping = {
+            "axis_1": {
+                "NEGATIVE": "SKYMAP_ZOOM_OUT",
+                "CENTER": "",
+                "POSITIVE": "SKYMAP_ZOOM_IN",
+            }
+        }
+        events = sender.build_action_events(
+            axes={"axis_1": -0.2},
+            previous_axes={},
+            action_map=mapping,
+        )
+        self.assertIn({"action": "SKYMAP_ZOOM_OUT", "pressed": True, "source": "axis"}, events)
+
+        moved = sender.build_action_events(
+            axes={"axis_1": 0.0},
+            previous_axes={"axis_1": -0.2},
+            action_map=mapping,
+        )
+        self.assertIn({"action": "SKYMAP_ZOOM_OUT", "pressed": False, "source": "axis"}, moved)
+        self.assertNotIn({"action": "", "pressed": True, "source": "axis"}, moved)
 
     def test_state_signature_suppresses_idle_updates(self):
         idle_a = sender.state_signature({"left_x": 0.0, "left_y": 0.0}, {"button_1": False})
