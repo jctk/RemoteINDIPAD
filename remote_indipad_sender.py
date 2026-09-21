@@ -51,14 +51,6 @@ PORT = 50007
 DEADZONE = 0.08
 _MODULE_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
 GUI_SETTINGS_PATH = _MODULE_DIR / "remote_indipad_sender.json"
-DEFAULT_AXIS_CONFIG = {
-    "axis_1": 0,
-    "axis_2": 1,
-    "axis_3": 2,
-    "axis_4": 3,
-    "axis_5": 4,
-    "axis_6": 5,
-}
 DEFAULT_ACTION_MAPPING = {
     "dpad_up": "MOUNT_NORTH",
     "dpad_down": "MOUNT_SOUTH",
@@ -115,43 +107,6 @@ def get_device_guid(joy) -> str:
         return ""
     guid = getattr(joy, "get_guid", lambda: "")()
     return str(guid or "")
-
-
-def _axis_sort_key(axis_name: str):
-    if not isinstance(axis_name, str) or not axis_name.startswith("axis_"):
-        return (1, str(axis_name))
-    try:
-        return (0, int(axis_name.split("_", 1)[1]))
-    except ValueError:
-        return (1, str(axis_name))
-
-
-def _normalize_axis_config(axis_config):
-    if isinstance(axis_config, dict) and "stick_axes" in axis_config:
-        axis_config = axis_config["stick_axes"]
-
-    if not isinstance(axis_config, dict):
-        return DEFAULT_AXIS_CONFIG.copy()
-
-    normalized = {}
-
-    for key, value in axis_config.items():
-        if not isinstance(key, str) or not key.startswith("axis_"):
-            continue
-        try:
-            normalized[key] = int(value)
-        except (TypeError, ValueError):
-            continue
-
-    if not normalized:
-        return DEFAULT_AXIS_CONFIG.copy()
-
-    max_axis_index = max(int(axis_name.split("_", 1)[1]) for axis_name in normalized)
-    for index in range(1, max_axis_index + 1):
-        standardized = f"axis_{index}"
-        normalized.setdefault(standardized, index - 1)
-
-    return {key: normalized[key] for key in sorted(normalized, key=_axis_sort_key)}
 
 
 def _resolve_flat_action_mapping(mapping: dict | None):
@@ -493,25 +448,19 @@ def load_axis_config(path: str | Path | None = None):
         config_path = (_MODULE_DIR / "gamepad_profiles.json")
     config = {"default_device": "", "profiles": {}}
 
-    def synthesize_stick_axes(profile_name: str | None = None):
-        name = str(profile_name or "").lower()
-        if "jc-u3712t" in name or "elecom" in name:
-            return _normalize_axis_config({"axis_1": 0, "axis_2": 1, "axis_3": 2, "axis_4": 4, "axis_5": 5, "axis_6": 6})
-        return _normalize_axis_config(DEFAULT_AXIS_CONFIG.copy())
-
     if not config_path.exists():
-        config["profiles"]["default"] = {"stick_axes": DEFAULT_AXIS_CONFIG.copy()}
+        config["profiles"]["default"] = {}
         return config
 
     try:
         with open(config_path, "r", encoding="utf-8") as handle:
             loaded = json.load(handle)
     except (OSError, ValueError):
-        config["profiles"]["default"] = {"stick_axes": DEFAULT_AXIS_CONFIG.copy()}
+        config["profiles"]["default"] = {}
         return config
 
     if not isinstance(loaded, dict):
-        config["profiles"]["default"] = {"stick_axes": DEFAULT_AXIS_CONFIG.copy()}
+        config["profiles"]["default"] = {}
         return config
 
     config["default_device"] = str(loaded.get("default_device", ""))
@@ -521,22 +470,10 @@ def load_axis_config(path: str | Path | None = None):
         for profile_name, profile_data in profiles.items():
             if not isinstance(profile_data, dict):
                 continue
-            preserved = {key: value for key, value in profile_data.items() if key != "stick_axes"}
-            stick_axes = profile_data.get("stick_axes")
-            if isinstance(stick_axes, dict):
-                preserved["stick_axes"] = _normalize_axis_config(stick_axes)
-            else:
-                preserved["stick_axes"] = synthesize_stick_axes(str(profile_name))
-            config["profiles"][str(profile_name)] = preserved
-
-    legacy_axes = loaded.get("stick_axes")
-    if isinstance(legacy_axes, dict):
-        axis_map = _normalize_axis_config(legacy_axes)
-        default_name = config["default_device"] or "default"
-        config["profiles"][default_name] = {"stick_axes": axis_map}
+            config["profiles"][str(profile_name)] = profile_data
 
     if not config["profiles"]:
-        config["profiles"]["default"] = {"stick_axes": DEFAULT_AXIS_CONFIG.copy()}
+        config["profiles"]["default"] = {}
 
     return config
 
@@ -544,44 +481,6 @@ def load_axis_config(path: str | Path | None = None):
 def get_device_name(joy) -> str:
     name = getattr(joy, "get_name", lambda: "")()
     return str(name or "Unknown gamepad")
-
-
-def select_device_profile(joy, config=None, forced_device: str | None = None):
-    loaded = load_axis_config() if config is None else config
-    profile_map = loaded.get("profiles", {}) if isinstance(loaded, dict) else {}
-    if not isinstance(profile_map, dict):
-        profile_map = {}
-
-    device_name = (str(forced_device).strip() if forced_device else get_device_name(joy)).strip()
-
-    if device_name:
-        if device_name in profile_map:
-            return profile_map[device_name]
-        lower_name = device_name.lower()
-        for profile_name, profile_data in profile_map.items():
-            profile_key = str(profile_name)
-            if profile_key.lower() == lower_name:
-                return profile_data
-            if lower_name in profile_key.lower() or profile_key.lower() in lower_name:
-                return profile_data
-
-    default_device = str(loaded.get("default_device", "")).strip()
-    if default_device and default_device in profile_map:
-        return profile_map[default_device]
-    if default_device:
-        for profile_name, profile_data in profile_map.items():
-            if str(profile_name).lower() == default_device.lower():
-                return profile_data
-            if default_device.lower() in str(profile_name).lower() or str(profile_name).lower() in default_device.lower():
-                return profile_data
-
-    if "default" in profile_map:
-        return profile_map["default"]
-
-    if profile_map:
-        return next(iter(profile_map.values()))
-
-    return {"stick_axes": DEFAULT_AXIS_CONFIG.copy()}
 
 # Windows VT100 console support
 def enable_windows_vt100() -> None:
@@ -924,30 +823,15 @@ def _safe_joystick_axis(joy, index: int) -> float:
         return 0.0
 
 # Gamepad State Reading Functions
-def read_gamepad_state(joy, axis_config=None):
-    # Normalize the axis configuration before reading the gamepad state
-    config = _normalize_axis_config(axis_config)
-
-    # Read the gamepad state using the normalized axis configuration
+def read_gamepad_state(joy):
+    # axis_N always maps 1:1 to the physical joystick axis index (N - 1)
     if pygame is not None and getattr(pygame, "get_init", lambda: False)():
         pygame.event.pump()
 
-    # Ensure the joystick is initialized before reading its state
     total_axes = int(getattr(joy, "get_numaxes", lambda: 0)())
-    max_axis_count = max(
-        total_axes,
-        max((int(axis_name.split("_", 1)[1]) for axis_name in config if axis_name.startswith("axis_")), default=0),
-    )
     axes = {}
-    for index in range(1, max_axis_count + 1):
-        axis_name = f"axis_{index}"
-        physical_index = int(config.get(axis_name, index - 1))
-        if physical_index < 0 or physical_index >= total_axes:
-            fallback_index = index - 1
-            if fallback_index < 0 or fallback_index >= total_axes:
-                continue
-            physical_index = fallback_index
-        axes[axis_name] = _safe_joystick_axis(joy, physical_index)
+    for index in range(1, total_axes + 1):
+        axes[f"axis_{index}"] = _safe_joystick_axis(joy, index - 1)
 
     # Read the number of buttons available on the joystick
     button_count = int(getattr(joy, "get_numbuttons", lambda: 0)())
@@ -1073,12 +957,6 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
     if forced_device:
         print(f"[sender] forced device profile: {forced_device}", flush=True)
 
-    config = load_axis_config()
-    device_profile = {"stick_axes": DEFAULT_AXIS_CONFIG.copy()}
-    if joy is not None:
-        device_profile = select_device_profile(joy, config, forced_device=forced_device)
-    axis_config = device_profile.get("stick_axes", DEFAULT_AXIS_CONFIG.copy())
-
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(2.0)
         print(f"[sender] connecting to {host}:{port}...", flush=True)
@@ -1115,7 +993,7 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
                 buttons = demo_buttons(step)
                 dpad = {"dpad_up": False, "dpad_down": False, "dpad_left": False, "dpad_right": False}
             else:
-                axes, buttons, dpad = read_gamepad_state(joy, axis_config)
+                axes, buttons, dpad = read_gamepad_state(joy)
             axes = normalize_axes(axes)
             buttons = {k: bool(v) for k, v in buttons.items()}
             dpad = {k: bool(v) for k, v in dpad.items()}
@@ -1229,7 +1107,7 @@ class SenderWorker(QObject):
                     self._safe_emit(self.log_received, append_protocol_log_time(f"[sender] heartbeat: {packet}", heartbeat))
                     last_heartbeat = now
 
-                axes, buttons, dpad = read_gamepad_state(self._joy, load_axis_config())
+                axes, buttons, dpad = read_gamepad_state(self._joy)
                 axes = normalize_axes(axes)
                 buttons = {k: bool(v) for k, v in buttons.items()}
                 dpad = {k: bool(v) for k, v in dpad.items()}
@@ -1590,7 +1468,7 @@ class IndipadWindow(QMainWindow):
                 return
             selected_joy = gui_pygame.joystick.Joystick(selected_index)
             selected_joy.init()
-            axes, buttons, dpad = read_gamepad_state(selected_joy, load_axis_config())
+            axes, buttons, dpad = read_gamepad_state(selected_joy)
             axes = normalize_axes(axes)
             buttons = {k: bool(v) for k, v in buttons.items()}
             dpad = {k: bool(v) for k, v in dpad.items()}

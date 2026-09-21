@@ -456,28 +456,6 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn(250, calls[2][1])
         self.assertAlmostEqual(float(calls[2][1][-1]), 250.0)
 
-    def test_device_profile_selection_and_force_override(self):
-        config = {
-            "default_device": "ELECOM JC-U3712T",
-            "profiles": {
-                "ELECOM JC-U3712T": {"stick_axes": {"axis_1": 0, "axis_2": 1, "axis_3": 2, "axis_4": 4}},
-                "DualSense Wireless Controller": {"stick_axes": {"axis_1": 0, "axis_2": 1, "axis_3": 3, "axis_4": 5}},
-            },
-        }
-
-        class FakeJoy:
-            def get_name(self):
-                return "DualSense Wireless Controller"
-
-        self.assertEqual(
-            sender.select_device_profile(FakeJoy(), config),
-            config["profiles"]["DualSense Wireless Controller"],
-        )
-        self.assertEqual(
-            sender.select_device_profile(FakeJoy(), config, forced_device="ELECOM JC-U3712T"),
-            config["profiles"]["ELECOM JC-U3712T"],
-        )
-
     def test_abstract_axis_names_are_used_instead_of_left_right_sticks(self):
         class FakeJoy:
             def get_numaxes(self):
@@ -490,7 +468,7 @@ class ProtocolTests(unittest.TestCase):
             def get_numbuttons(self):
                 return 0
 
-        axes, buttons, dpad = sender.read_gamepad_state(FakeJoy(), {"axis_1": 0, "axis_2": 1, "axis_3": 2, "axis_4": 3})
+        axes, buttons, dpad = sender.read_gamepad_state(FakeJoy())
         self.assertEqual(sorted(axes), ["axis_1", "axis_2", "axis_3", "axis_4"])
         self.assertAlmostEqual(axes["axis_1"], 0.2)
         self.assertAlmostEqual(axes["axis_2"], -0.8)
