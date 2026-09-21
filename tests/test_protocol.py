@@ -105,6 +105,16 @@ class ProtocolTests(unittest.TestCase):
         resolved = sender._resolve_flat_action_mapping({"axis_4": ""})
         self.assertEqual(resolved["axis_4"], "")
 
+    def test_action_mapping_sorts_all_buttons_before_axes(self):
+        resolved = sender._resolve_flat_action_mapping({
+            "axis_1": "SKYMAP_MOVE",
+            "button_16": "",
+            "button_13": "",
+        })
+        keys = list(resolved)
+        self.assertLess(keys.index("button_12"), keys.index("button_13"))
+        self.assertLess(keys.index("button_16"), keys.index("axis_1"))
+
     def test_action_mapping_store_omits_redundant_default_entry(self):
         normalized = sender._normalize_action_mapping_store({
             "controllers": [
@@ -126,6 +136,9 @@ class ProtocolTests(unittest.TestCase):
 
             def get_numaxes(self):
                 return 2
+
+            def get_numbuttons(self):
+                return 16
 
             def init(self):
                 return None
@@ -162,7 +175,9 @@ class ProtocolTests(unittest.TestCase):
             sender.pygame = original_pygame
 
         axis_labels = [label for label, key in rows if key.startswith("axis_")]
+        button_labels = [label for label, key in rows if key.startswith("button_")]
         self.assertEqual(axis_labels, ["Axis 1", "Axis 2"])
+        self.assertEqual(button_labels, [f"Button {index}" for index in range(1, 17)])
 
     def test_apply_mapping_preserves_other_controller_entries(self):
         window = sender.IndipadWindow.__new__(sender.IndipadWindow)
@@ -198,6 +213,47 @@ class ProtocolTests(unittest.TestCase):
 
         self.assertEqual(len(window.gui_settings["action_mapping"]["controllers"]), 2)
         self.assertEqual(window.gui_settings["action_mapping"]["controllers"][0]["mapping"]["axis_4"], "")
+
+    def test_controller_change_reconnects_an_active_worker(self):
+        class FakeWorker:
+            def __init__(self):
+                self.stopped = False
+
+            def stop(self):
+                self.stopped = True
+
+        class FakeCombo:
+            def currentText(self):
+                return "Xbox One S Controller"
+
+        window = sender.IndipadWindow.__new__(sender.IndipadWindow)
+        active_worker = FakeWorker()
+        window.worker = active_worker
+        window.controller_combo = FakeCombo()
+        messages = []
+        window.log = messages.append
+        reconnected = []
+        window.on_connect = lambda: reconnected.append(True)
+
+        window._on_controller_changed(1)
+
+        self.assertTrue(active_worker.stopped)
+        self.assertIsNone(window.worker)
+        self.assertEqual(reconnected, [True])
+        self.assertIn("switching controller to Xbox One S Controller", messages[0])
+
+    def test_stale_worker_disconnect_does_not_clear_current_worker(self):
+        window = sender.IndipadWindow.__new__(sender.IndipadWindow)
+        old_worker = object()
+        current_worker = object()
+        window.worker = current_worker
+        states = []
+        window.set_connection_button_state = states.append
+
+        window._handle_connection_update("Disconnected", old_worker)
+
+        self.assertIs(window.worker, current_worker)
+        self.assertEqual(states, [])
 
     def test_mapping_editor_save_keeps_window_open(self):
         window = sender.MappingEditorWindow.__new__(sender.MappingEditorWindow)
@@ -575,6 +631,36 @@ class ProtocolTests(unittest.TestCase):
         payload = protocol.build_action_payload(action="FOCUS_IN", pressed=True, source="button", step=250)
         self.assertEqual(payload["step"], 250)
 
+    def test_axis_focus_step_actions_update_step_on_state_transitions(self):
+        focus_step_state = {"value": 50}
+        mapping = {
+            "axis_2": {
+                "NEGATIVE": "FOCUS_STEP_UP",
+                "CENTER": "",
+                "POSITIVE": "FOCUS_STEP_DOWN",
+            }
+        }
+
+        events = sender.build_action_events(
+            axes={"axis_2": -1.0},
+            previous_axes={"axis_2": 0.0},
+            action_map=mapping,
+            focus_step=focus_step_state["value"],
+            focus_step_state=focus_step_state,
+        )
+        self.assertEqual(events, [])
+        self.assertEqual(focus_step_state["value"], 100)
+
+        events = sender.build_action_events(
+            axes={"axis_2": 1.0},
+            previous_axes={"axis_2": -1.0},
+            action_map=mapping,
+            focus_step=focus_step_state["value"],
+            focus_step_state=focus_step_state,
+        )
+        self.assertEqual(events, [])
+        self.assertEqual(focus_step_state["value"], 50)
+
     def test_validate_message_accepts_action_payload(self):
         payload = {
             "ts": 1.0,
@@ -840,7 +926,7 @@ class ProtocolTests(unittest.TestCase):
         config = sender.load_axis_config(Path("D:/Projects/RemoteINDIPAD/gamepad_profiles.json"))
         default_mapping = sender.get_default_action_mapping("JC-U3712T", config)
         self.assertEqual(default_mapping["dpad_down"], "MOUNT_SOUTH")
-        self.assertEqual(default_mapping["button_6"], "FOCUS_IN")
+        self.assertEqual(default_mapping["button_6"], "FOCUS_OUT")
 
     def test_idle_state_does_not_emit_action_events(self):
         mapping = sender.build_action_events(

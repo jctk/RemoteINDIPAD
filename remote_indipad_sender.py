@@ -113,6 +113,17 @@ def get_device_guid(joy) -> str:
     return str(guid or "")
 
 
+def _action_mapping_sort_key(item):
+    key = item[0]
+    if key in {"dpad_up", "dpad_down", "dpad_left", "dpad_right"}:
+        return (0, ("dpad_up", "dpad_down", "dpad_left", "dpad_right").index(key))
+    if isinstance(key, str) and key.startswith("button_") and key[7:].isdigit():
+        return (1, int(key[7:]))
+    if isinstance(key, str) and key.startswith("axis_") and key[5:].isdigit():
+        return (2, int(key[5:]))
+    return (3, str(key))
+
+
 def _resolve_flat_action_mapping(mapping: dict | None):
     resolved = DEFAULT_ACTION_MAPPING.copy()
     if not isinstance(mapping, dict):
@@ -134,7 +145,7 @@ def _resolve_flat_action_mapping(mapping: dict | None):
         if key not in resolved:
             resolved[key] = value
 
-    return resolved
+    return dict(sorted(resolved.items(), key=_action_mapping_sort_key))
 
 
 def _normalize_action_mapping_store(raw_mapping, controller_name: str | None = None, controller_guid: str | None = None):
@@ -297,21 +308,10 @@ def get_gamepad_input_rows(selected_device: str | None = None):
         ("DPAD Down", "dpad_down"),
         ("DPAD Left", "dpad_left"),
         ("DPAD Right", "dpad_right"),
-        ("Button 1", "button_1"),
-        ("Button 2", "button_2"),
-        ("Button 3", "button_3"),
-        ("Button 4", "button_4"),
-        ("Button 5", "button_5"),
-        ("Button 6", "button_6"),
-        ("Button 7", "button_7"),
-        ("Button 8", "button_8"),
-        ("Button 9", "button_9"),
-        ("Button 10", "button_10"),
-        ("Button 11", "button_11"),
-        ("Button 12", "button_12"),
     ]
 
     axis_count = 0
+    button_count = 0
     if selected_device:
         try:
             if pygame is not None and getattr(pygame, "get_init", lambda: False)():
@@ -321,28 +321,29 @@ def get_gamepad_input_rows(selected_device: str | None = None):
                     joy.init()
                     if str(get_device_name(joy)).lower() == str(selected_device).lower():
                         axis_count = max(axis_count, int(getattr(joy, "get_numaxes", lambda: 0)()))
+                        button_count = max(button_count, int(getattr(joy, "get_numbuttons", lambda: 0)()))
                         break
         except Exception:
             axis_count = 0
+            button_count = 0
 
-    if axis_count <= 0:
+    if axis_count <= 0 or button_count <= 0:
         config = load_axis_config()
         mapping = get_default_action_mapping(selected_device, config)
-        axis_count = max(
-            [int(key.split("_", 1)[1]) for key in mapping if isinstance(key, str) and key.startswith("axis_")],
-            default=6,
-        )
+        if axis_count <= 0:
+            axis_count = max(
+                [int(key.split("_", 1)[1]) for key in mapping if isinstance(key, str) and key.startswith("axis_")],
+                default=6,
+            )
+        if button_count <= 0:
+            button_count = max(
+                [int(key.split("_", 1)[1]) for key in mapping if isinstance(key, str) and key.startswith("button_")],
+                default=12,
+            )
 
+    rows.extend((f"Button {index}", f"button_{index}") for index in range(1, button_count + 1))
     rows.extend((f"Axis {index}", f"axis_{index}") for index in range(1, axis_count + 1))
-
-    if selected_device is None:
-        return rows
-
-    lowered = selected_device.lower()
-    if "jc-u3712t" in lowered or "elecom" in lowered:
-        return rows
-
-    return [row for row in rows if row[1] not in {"button_11", "button_12"}]
+    return rows
 
 
 def _clamp_focus_step(value: object, default: int = 100) -> int:
@@ -737,6 +738,15 @@ def build_action_events(
             focus_step_state["value"] = current_focus_step
         return current_focus_step
 
+    def apply_focus_step_action(action: str) -> bool:
+        if action == "FOCUS_STEP_UP":
+            advance_step("up")
+            return True
+        if action == "FOCUS_STEP_DOWN":
+            advance_step("down")
+            return True
+        return False
+
     for name in dpad_names:
         current_pressed = bool(dpad.get(name))
         previous_pressed = bool(previous_dpad.get(name))
@@ -754,13 +764,7 @@ def build_action_events(
             if current_pressed != previous_pressed:
                 if not action:
                     continue
-                if action == "FOCUS_STEP_UP":
-                    if current_pressed:
-                        advance_step("up")
-                    continue
-                if action == "FOCUS_STEP_DOWN":
-                    if current_pressed:
-                        advance_step("down")
+                if current_pressed and apply_focus_step_action(action):
                     continue
                 if action in {"CAA_ROTATE_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE"}:
                     if current_pressed != previous_pressed:
@@ -783,16 +787,16 @@ def build_action_events(
         state_mapping = _axis_state_mapping_for_value(resolved_map.get(axis_key, {}))
         if previous_state is None:
             current_action = state_mapping.get(AXIS_STATE_NAMES.get(axis_state, "CENTER"), "")
-            if current_action:
+            if current_action and not apply_focus_step_action(current_action):
                 events.append({"action": current_action, "pressed": True, "source": "axis"})
             continue
         if previous_state == axis_state:
             continue
         previous_action = state_mapping.get(AXIS_STATE_NAMES.get(previous_state, "CENTER"), "")
         current_action = state_mapping.get(AXIS_STATE_NAMES.get(axis_state, "CENTER"), "")
-        if previous_action:
+        if previous_action and previous_action not in {"FOCUS_STEP_UP", "FOCUS_STEP_DOWN"}:
             events.append({"action": previous_action, "pressed": False, "source": "axis"})
-        if current_action:
+        if current_action and not apply_focus_step_action(current_action):
             events.append({"action": current_action, "pressed": True, "source": "axis"})
 
     for key in list(button_press_times):
@@ -1456,7 +1460,7 @@ class IndipadWindow(QMainWindow):
         self.connection_button.clicked.connect(self.on_toggle_connection)
         self.mapping_button.clicked.connect(self.on_edit_mapping)
         self.close_button.clicked.connect(self.on_close)
-        self.controller_combo.currentIndexChanged.connect(self._start_monitor_preview_timer)
+        self.controller_combo.currentIndexChanged.connect(self._on_controller_changed)
 
         self.refresh_controllers()
         self.restore_saved_controller()
@@ -1541,6 +1545,22 @@ class IndipadWindow(QMainWindow):
             if self.controller_combo.itemText(index) == saved_controller:
                 self.controller_combo.setCurrentIndex(index)
                 return
+
+    def _on_controller_changed(self, _index: int):
+        if self.worker is None:
+            self._start_monitor_preview_timer()
+            return
+
+        device_name = self.controller_combo.currentText()
+        if device_name in {"No controller found", "Controller unavailable"}:
+            self.log("[gui] controller change ignored: no controller is available")
+            return
+
+        previous_worker = self.worker
+        previous_worker.stop()
+        self.worker = None
+        self.log(f"[gui] switching controller to {device_name}")
+        self.on_connect()
 
     def _start_monitor_preview_timer(self):
         if not hasattr(self, "_monitor_preview_timer") or self._monitor_preview_timer is None:
@@ -1655,9 +1675,11 @@ class IndipadWindow(QMainWindow):
         self.connection_button.setText("Disconnect" if connected else "Connect")
         self.connection_button.setStyleSheet("QPushButton { font-weight: bold; }" if connected else "")
 
-    def _handle_connection_update(self, text: str):
+    def _handle_connection_update(self, text: str, worker=None):
         normalized = str(text or "").strip()
         if not normalized:
+            return
+        if worker is not None and worker is not self.worker:
             return
 
         if normalized.lower().startswith("connected") or normalized.lower().startswith("ready"):
@@ -1666,12 +1688,14 @@ class IndipadWindow(QMainWindow):
 
         if normalized.lower().startswith("error:") or normalized.lower() == "disconnected":
             self.set_connection_button_state(False)
-            self.worker = None
+            if worker is None or worker is self.worker:
+                self.worker = None
             return
 
         if "disconnected" in normalized.lower():
             self.set_connection_button_state(False)
-            self.worker = None
+            if worker is None or worker is self.worker:
+                self.worker = None
             return
 
         self.set_connection_button_state(False)
@@ -1828,7 +1852,9 @@ class IndipadWindow(QMainWindow):
         )
         self.worker.status_changed.connect(lambda text: self.log(f"[gui] status: {text}"))
         self.worker.log_received.connect(self.handle_log_message)
-        self.worker.connection_changed.connect(self._handle_connection_update)
+        self.worker.connection_changed.connect(
+            lambda text, worker=self.worker: self._handle_connection_update(text, worker)
+        )
         self.worker.connection_changed.connect(lambda text: self.log(f"[gui] {text}"))
         self.worker.monitor_updated.connect(self.update_monitor_snapshot)
 

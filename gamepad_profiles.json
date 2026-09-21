@@ -1,6 +1,64 @@
 {
   "default_device": "default",
   "profiles": {
+    "Controller (Xbox One For Windows)": {
+      "manufacturer": "Microsoft",
+      "model": "",
+      "label": "XBox Wireless Controller",
+      "description": "",
+      "action_mapping": {
+        "dpad_up": "MOUNT_NORTH",
+        "dpad_down": "MOUNT_SOUTH",
+        "dpad_left": "MOUNT_WEST",
+        "dpad_right": "MOUNT_EAST",
+        "button_1": "CAA_ROTATE_COUNTER_CLOCKWISE",
+        "button_2": "CAA_ROTATE_CLOCKWISE",
+        "button_3": "FOCUS_IN",
+        "button_4": "FOCUS_OUT",
+        "button_5": "FILTERWHEEL_PREV",
+        "button_6": "FILTERWHEEL_NEXT",
+        "button_7": "",
+        "button_8": "",
+        "button_9": "FOCUS_STOP",
+        "button_10": "MOUNT_STOP",
+        "button_11": "",
+        "button_12": "",
+        "button_13": "",
+        "button_14": "",
+        "button_15": "",
+        "button_16": "",
+        "axis_1": {
+          "NEGATIVE": "MOUNT_STEP_UP",
+          "CENTER": "",
+          "POSITIVE": "MOUNT_STEP_DOWN"
+        },
+        "axis_2": {
+          "NEGATIVE": "FOCUS_STEP_UP",
+          "CENTER": "",
+          "POSITIVE": "FOCUS_STEP_DOWN"
+        },
+        "axis_3": {
+          "NEGATIVE": "SKYMAP_ROTATE_DOWN",
+          "CENTER": "",
+          "POSITIVE": "SKYMAP_ROTATE_UP"
+        },
+        "axis_4": {
+          "NEGATIVE": "SKYMAP_ZOOM_IN",
+          "CENTER": "",
+          "POSITIVE": "SKYMAP_ZOOM_OUT"
+        },
+        "axis_5": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_6": {
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        }
+      }
+    },
     "JC-U3712T": {
       "manufacturer": "ELECOM",
       "model": "JC-U3712T",
@@ -16,11 +74,11 @@
         "button_3": "CAA_ROTATE_COUNTER_CLOCKWISE",
         "button_4": "CAA_ROTATE_CLOCKWISE",
         "button_5": "MOUNT_STEP_UP",
-        "button_6": "FOCUS_IN",
+        "button_6": "FOCUS_OUT",
         "button_7": "MOUNT_STEP_DOWN",
-        "button_8": "FOCUS_OUT",
-        "button_9": "MOUNT_STOP",
-        "button_10": "FOCUS_STOP",
+        "button_8": "FOCUS_IN",
+        "button_9": "FOCUS_STOP",
+        "button_10": "MOUNT_STOP",
         "button_11": "FILTERWHEEL_PREV",
         "button_12": "FILTERWHEEL_NEXT",
         "axis_1": {
@@ -56,31 +114,35 @@
       "label": "8BitDo Zero 2 - X-input",
       "description": "The Zero 2 controller by 8BitDo. Settings for use in X-Input mode.",
       "action_mapping": {
-        "dpad_up": "MOUNT_NORTH",
-        "dpad_down": "MOUNT_SOUTH",
-        "dpad_left": "MOUNT_WEST",
-        "dpad_right": "MOUNT_EAST",
-        "button_1": "FOCUS_STEP_DOWN",
-        "button_2": "FOCUS_STEP_UP",
-        "button_3": "CAA_ROTATE_COUNTER_CLOCKWISE",
-        "button_4": "CAA_ROTATE_CLOCKWISE",
+        "dpad_up": "",
+        "dpad_down": "",
+        "dpad_left": "",
+        "dpad_right": "",
+        "button_1": "CAA_ROTATE_COUNTER_CLOCKWISE",
+        "button_2": "CAA_ROTATE_CLOCKWISE",
+        "button_3": "FOCUS_STEP_DOWN",
+        "button_4": "FOCUS_STEP_UP",
         "button_5": "MOUNT_STEP_UP",
-        "button_6": "FOCUS_IN",
-        "button_7": "MOUNT_STEP_DOWN",
+        "button_6": "MOUNT_STEP_DOWN",
+        "button_7": "FOCUS_IN",
         "button_8": "FOCUS_OUT",
-        "button_9": "MOUNT_STOP",
-        "button_10": "FOCUS_STOP",
+        "button_9": "",
+        "button_10": "",
         "button_11": "",
         "button_12": "",
+        "button_13": "",
+        "button_14": "",
+        "button_15": "",
+        "button_16": "",
         "axis_1": {
-          "NEGATIVE": "",
+          "NEGATIVE": "MOUNT_WEST",
           "CENTER": "",
-          "POSITIVE": ""
+          "POSITIVE": "MOUNT_EAST"
         },
         "axis_2": {
-          "NEGATIVE": "",
+          "NEGATIVE": "MOUNT_NORTH",
           "CENTER": "",
-          "POSITIVE": ""
+          "POSITIVE": "MOUNT_SOUTH"
         },
         "axis_3": {
           "NEGATIVE": "",
