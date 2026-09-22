@@ -1603,10 +1603,6 @@ def execute_skymap_zoom(direction: str) -> bool:
         return False
 
 
-def handle_skymap_zoom(pressed: bool, source: str = "stick") -> None:
-    _debug_dispatch("SKYMAP_ZOOM", "SKYMAP_ZOOM", pressed, source)
-
-
 def handle_skymap_zoom_in(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("SKYMAP_ZOOM_IN", "SKYMAP_ZOOM_IN", pressed, source)
     if pressed:
@@ -1642,7 +1638,6 @@ _DISPATCH_TABLE = {
     "CAA_ROTATE_CLOCKWISE": handle_caa_rotate_clockwise,
     "CAA_ROTATE_ABORT": handle_caa_rotate_abort,
     "SKYMAP_MOVE": handle_skymap_move,
-    "SKYMAP_ZOOM": handle_skymap_zoom,
     "SKYMAP_ZOOM_IN": handle_skymap_zoom_in,
     "SKYMAP_ZOOM_OUT": handle_skymap_zoom_out,
     "SKYMAP_ROTATE": handle_skymap_rotate,
