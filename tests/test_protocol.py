@@ -1,3 +1,4 @@
+import asyncio
 import io
 import threading
 import unittest
@@ -100,6 +101,68 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(sender.DEFAULT_ACTION_MAPPING.get("button_12"), "FILTERWHEEL_NEXT")
         self.assertIn("FILTERWHEEL_PREV", sender.AVAILABLE_ACTIONS)
         self.assertIn("FILTERWHEEL_NEXT", sender.AVAILABLE_ACTIONS)
+
+    def test_filterwheel_wraps_at_slot_boundaries(self):
+        shared_interface = type("SharedInterface", (), {})()
+        shared_interface.slot_count = 5
+        shared_interface.current_slot = 1
+
+        async def call_get_text(self, *args):
+            index = int(args[2].split("_")[-1])
+            if index > shared_interface.slot_count:
+                return "invalid"
+            return f"Slot {index}"
+
+        async def call_get_number(self, *args):
+            return shared_interface.current_slot
+
+        async def call_get_property_state(self, *args):
+            return "idle"
+
+        async def call_set_number(self, *args):
+            shared_interface.current_slot = int(float(args[3]))
+            return True
+
+        async def call_send_property(self, *args):
+            return True
+
+        shared_interface.call_get_text = call_get_text.__get__(shared_interface, type(shared_interface))
+        shared_interface.call_get_number = call_get_number.__get__(shared_interface, type(shared_interface))
+        shared_interface.call_get_property_state = call_get_property_state.__get__(shared_interface, type(shared_interface))
+        shared_interface.call_set_number = call_set_number.__get__(shared_interface, type(shared_interface))
+        shared_interface.call_send_property = call_send_property.__get__(shared_interface, type(shared_interface))
+
+        class FakeProxy:
+            def __init__(self, interface):
+                self.interface = interface
+
+            def get_interface(self, name):
+                return self.interface
+
+        class FakeBus:
+            def __init__(self, *args, **kwargs):
+                self.interface = shared_interface
+
+            async def connect(self):
+                pass
+
+            async def introspect(self, *args):
+                return object()
+
+            def get_proxy_object(self, *args):
+                return FakeProxy(self.interface)
+
+            def disconnect(self):
+                pass
+
+        with patch("remote_indipad_receiver.MessageBus", FakeBus):
+            fake_bus_type = type("FakeBusType", (), {"SESSION": "session"})
+            with patch("remote_indipad_receiver.BusType", fake_bus_type):
+                prev_current, prev_target, _, _ = asyncio.run(receiver._execute_filterwheel_action_async("Filter Simulator", "FILTERWHEEL_PREV"))
+                next_current, next_target, _, _ = asyncio.run(receiver._execute_filterwheel_action_async("Filter Simulator", "FILTERWHEEL_NEXT"))
+
+        self.assertEqual((prev_current, prev_target), (1, 5))
+        self.assertEqual((next_current, next_target), (5, 1))
 
     def test_empty_string_mapping_is_preserved(self):
         resolved = sender._resolve_flat_action_mapping({"axis_4": ""})
@@ -563,6 +626,96 @@ class ProtocolTests(unittest.TestCase):
         calls = receiver.build_focus_dbus_calls("GEMINI EAF GS150RC", "FOCUS_IN", step=250)
         self.assertIn(250, calls[2][1])
         self.assertAlmostEqual(float(calls[2][1][-1]), 250.0)
+
+    def test_skymap_zoom_in_out_actions_fire_only_on_press(self):
+        calls = []
+
+        class FakeInterface:
+            async def call_zoom_in(self):
+                calls.append("zoom_in")
+                return True
+
+            async def call_zoom_out(self):
+                calls.append("zoom_out")
+                return True
+
+        class FakeProxy:
+            def get_interface(self, name):
+                return FakeInterface()
+
+        class FakeBus:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def connect(self):
+                pass
+
+            async def introspect(self, *args):
+                return object()
+
+            def get_proxy_object(self, *args):
+                return FakeProxy()
+
+            def disconnect(self):
+                pass
+
+        with patch("remote_indipad_receiver.MessageBus", FakeBus):
+            fake_bus_type = type("FakeBusType", (), {"SESSION": "session"})
+            with patch("remote_indipad_receiver.BusType", fake_bus_type):
+                receiver.dispatch_abstract_action("SKYMAP_ZOOM_IN", True, "button")
+                receiver.dispatch_abstract_action("SKYMAP_ZOOM_IN", False, "button")
+                receiver.dispatch_abstract_action("SKYMAP_ZOOM_OUT", True, "button")
+                receiver.dispatch_abstract_action("SKYMAP_ZOOM_OUT", False, "button")
+
+        self.assertEqual(calls, ["zoom_in", "zoom_out"])
+
+    def test_skymap_rotate_up_down_actions_fire_only_on_press_and_wrap_angle(self):
+        calls = []
+
+        class FakeInterface:
+            current_rotation = 0.0
+
+            async def call_get_sky_map_rotation(self):
+                calls.append(("get", self.current_rotation))
+                return self.current_rotation
+
+            async def call_set_sky_map_rotation(self, angle):
+                calls.append(("set", float(angle)))
+                self.__class__.current_rotation = float(angle)
+                return True
+
+        class FakeProxy:
+            def get_interface(self, name):
+                return FakeInterface()
+
+        class FakeBus:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def connect(self):
+                pass
+
+            async def introspect(self, *args):
+                return object()
+
+            def get_proxy_object(self, *args):
+                return FakeProxy()
+
+            def disconnect(self):
+                pass
+
+        with patch("remote_indipad_receiver.MessageBus", FakeBus):
+            fake_bus_type = type("FakeBusType", (), {"SESSION": "session"})
+            with patch("remote_indipad_receiver.BusType", fake_bus_type):
+                receiver.dispatch_abstract_action("SKYMAP_ROTATE_DOWN", True, "button")
+                receiver.dispatch_abstract_action("SKYMAP_ROTATE_DOWN", False, "button")
+                receiver.dispatch_abstract_action("SKYMAP_ROTATE_UP", True, "button")
+                receiver.dispatch_abstract_action("SKYMAP_ROTATE_UP", False, "button")
+
+        self.assertEqual(calls[0], ("get", 0.0))
+        self.assertEqual(calls[1], ("set", 355.0))
+        self.assertEqual(calls[2], ("get", 355.0))
+        self.assertEqual(calls[3], ("set", 0.0))
 
     def test_abstract_axis_names_are_used_instead_of_left_right_sticks(self):
         class FakeJoy:

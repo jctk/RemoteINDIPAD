@@ -569,9 +569,15 @@ async def _execute_filterwheel_action_async(driver_name: str, direction: str):
             return current_slot, current_slot, slot_count, True
 
         if direction == "FILTERWHEEL_PREV":
-            target_slot = max(1, current_slot - 1)
+            if current_slot <= 1:
+                target_slot = slot_count
+            else:
+                target_slot = current_slot - 1
         elif direction == "FILTERWHEEL_NEXT":
-            target_slot = min(slot_count, current_slot + 1)
+            if current_slot >= slot_count:
+                target_slot = 1
+            else:
+                target_slot = current_slot + 1
         else:
             raise ValueError(f"unsupported filterwheel direction: {direction}")
 
@@ -1245,7 +1251,7 @@ class ReceiverWindow(QMainWindow):
         self.log(f"[gui] heartbeat log {'enabled' if enabled else 'disabled'}")
 
     def start_receiver(self):
-        self.save_settings()
+        # No save_settings() here: combos still hold placeholder items until the INDI scan completes.
         host = self.host_edit.text().strip() or "0.0.0.0"
         port_text = self.port_edit.text().strip() or "50007"
         try:
@@ -1291,13 +1297,20 @@ class ReceiverWindow(QMainWindow):
             self.filter_combo.addItems(filter_options)
             self.rotator_combo.addItems(rotator_options)
 
-            self.mount_combo.setCurrentIndex(0 if not result.get("mount") else 1)
-            self.focuser_combo.setCurrentIndex(0 if not result.get("focuser") else 1)
-            self.filter_combo.setCurrentIndex(0 if not result.get("filter") else 1)
-            self.rotator_combo.setCurrentIndex(0 if not result.get("rotator") else 1)
+            def restore_or_default(combo, saved_value, discovered):
+                if saved_value and saved_value in discovered:
+                    combo.setCurrentIndex(combo.findText(saved_value))
+                else:
+                    combo.setCurrentIndex(0 if not discovered else 1)
+
+            restore_or_default(self.mount_combo, self.gui_settings.get("mount", ""), result.get("mount", []))
+            restore_or_default(self.focuser_combo, self.gui_settings.get("focuser", ""), result.get("focuser", []))
+            restore_or_default(self.filter_combo, self.gui_settings.get("filter", ""), result.get("filter", []))
+            restore_or_default(self.rotator_combo, self.gui_settings.get("rotator", ""), result.get("rotator", []))
 
             self._sync_active_indi_devices()
             self._refresh_filter_slot_count()
+            self.save_settings()
 
             if result.get("mount") or result.get("focuser") or result.get("filter") or result.get("rotator"):
                 self.log("[gui] INDI scan complete")
@@ -1564,8 +1577,126 @@ def handle_skymap_move(pressed: bool, source: str = "stick") -> None:
     _debug_dispatch("SKYMAP_MOVE", "SKYMAP_MOVE", pressed, source)
 
 
-def handle_skymap_zoom(pressed: bool, source: str = "stick") -> None:
-    _debug_dispatch("SKYMAP_ZOOM", "SKYMAP_ZOOM", pressed, source)
+async def _get_skymap_rotation_async() -> float:
+    if MessageBus is None or BusType is None:
+        raise RuntimeError("dbus-next is required for KStars sky map operations")
+
+    bus = MessageBus(bus_type=BusType.SESSION)
+    await bus.connect()
+    try:
+        introspection = await bus.introspect("org.kde.kstars", "/KStars")
+        proxy = bus.get_proxy_object("org.kde.kstars", "/KStars", introspection)
+        interface = proxy.get_interface("org.kde.kstars")
+        method = getattr(interface, "call_get_sky_map_rotation", None)
+        if method is None:
+            method = getattr(interface, "getSkyMapRotation", None)
+        if method is None:
+            raise AttributeError("org.kde.kstars does not expose getSkyMapRotation")
+        value = await method()
+        rotation = float(_dbus_value(value))
+        return rotation
+    finally:
+        bus.disconnect()
+
+
+async def _set_skymap_rotation_async(angle: float) -> None:
+    if MessageBus is None or BusType is None:
+        raise RuntimeError("dbus-next is required for KStars sky map operations")
+
+    bus = MessageBus(bus_type=BusType.SESSION)
+    await bus.connect()
+    try:
+        introspection = await bus.introspect("org.kde.kstars", "/KStars")
+        proxy = bus.get_proxy_object("org.kde.kstars", "/KStars", introspection)
+        interface = proxy.get_interface("org.kde.kstars")
+        method = getattr(interface, "call_set_sky_map_rotation", None)
+        if method is None:
+            method = getattr(interface, "setSkyMapRotation", None)
+        if method is None:
+            raise AttributeError("org.kde.kstars does not expose setSkyMapRotation")
+        await method(float(angle))
+    finally:
+        bus.disconnect()
+
+
+def _wrap_skymap_rotation(angle: float) -> float:
+    wrapped = float(angle) % 360.0
+    if wrapped < 0.0:
+        wrapped += 360.0
+    return wrapped
+
+
+def execute_skymap_rotate(direction: str) -> bool:
+    direction = str(direction).strip().lower()
+    if direction not in {"up", "down"}:
+        raise ValueError(f"unsupported skymap rotation direction: {direction!r}")
+
+    try:
+        current_rotation = asyncio.run(_get_skymap_rotation_async())
+        delta = 5.0 if direction == "up" else -5.0
+        next_rotation = _wrap_skymap_rotation(current_rotation + delta)
+        asyncio.run(_set_skymap_rotation_async(next_rotation))
+        return True
+    except Exception as exc:
+        print(f"[receiver] KStars sky map rotate {direction} D-Bus call error: {exc}", flush=True)
+        return False
+
+
+async def _execute_skymap_zoom_action(method_name: str) -> None:
+    if MessageBus is None or BusType is None:
+        raise RuntimeError("dbus-next is required for KStars sky map operations")
+
+    bus = MessageBus(bus_type=BusType.SESSION)
+    await bus.connect()
+    try:
+        introspection = await bus.introspect("org.kde.kstars", "/KStars")
+        proxy = bus.get_proxy_object("org.kde.kstars", "/KStars", introspection)
+        interface = proxy.get_interface("org.kde.kstars")
+        method = getattr(interface, f"call_{method_name}", None)
+        if method is None:
+            method = getattr(interface, method_name, None)
+        if method is None:
+            raise AttributeError(f"org.kde.kstars does not expose {method_name}")
+        await method()
+    finally:
+        bus.disconnect()
+
+
+def execute_skymap_zoom(direction: str) -> bool:
+    direction = str(direction).strip().lower()
+    if direction not in {"in", "out"}:
+        raise ValueError(f"unsupported skymap zoom direction: {direction!r}")
+
+    try:
+        asyncio.run(_execute_skymap_zoom_action(f"zoom_{direction}"))
+        return True
+    except Exception as exc:
+        print(f"[receiver] KStars sky map zoom {direction} D-Bus call error: {exc}", flush=True)
+        return False
+
+
+def handle_skymap_zoom_in(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("SKYMAP_ZOOM_IN", "SKYMAP_ZOOM_IN", pressed, source)
+    if pressed:
+        execute_skymap_zoom("in")
+
+
+def handle_skymap_zoom_out(pressed: bool, source: str = "button") -> None:
+    _debug_dispatch("SKYMAP_ZOOM_OUT", "SKYMAP_ZOOM_OUT", pressed, source)
+    if pressed:
+        execute_skymap_zoom("out")
+
+
+def handle_skymap_rotate_up(pressed: bool, source: str = "stick") -> None:
+    _debug_dispatch("SKYMAP_ROTATE_UP", "SKYMAP_ROTATE_UP", pressed, source)
+    if pressed:
+        execute_skymap_rotate("up")
+
+
+def handle_skymap_rotate_down(pressed: bool, source: str = "stick") -> None:
+    _debug_dispatch("SKYMAP_ROTATE_DOWN", "SKYMAP_ROTATE_DOWN", pressed, source)
+    if pressed:
+        execute_skymap_rotate("down")
 
 
 def handle_skymap_rotate(pressed: bool, source: str = "stick") -> None:
@@ -1591,8 +1722,11 @@ _DISPATCH_TABLE = {
     "CAA_ROTATE_CLOCKWISE": handle_caa_rotate_clockwise,
     "CAA_ROTATE_ABORT": handle_caa_rotate_abort,
     "SKYMAP_MOVE": handle_skymap_move,
-    "SKYMAP_ZOOM": handle_skymap_zoom,
+    "SKYMAP_ZOOM_IN": handle_skymap_zoom_in,
+    "SKYMAP_ZOOM_OUT": handle_skymap_zoom_out,
     "SKYMAP_ROTATE": handle_skymap_rotate,
+    "SKYMAP_ROTATE_UP": handle_skymap_rotate_up,
+    "SKYMAP_ROTATE_DOWN": handle_skymap_rotate_down,
 }
 
 
@@ -1609,6 +1743,10 @@ def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown"
         return
     if action == "CAA_ROTATE_ABORT":
         handler(bool(pressed), str(source))
+        return
+    if action in {"SKYMAP_ZOOM_IN", "SKYMAP_ZOOM_OUT", "SKYMAP_ROTATE_UP", "SKYMAP_ROTATE_DOWN"}:
+        if bool(pressed):
+            handler(True, str(source))
         return
     handler(bool(pressed), str(source))
 
