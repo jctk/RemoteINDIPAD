@@ -246,12 +246,17 @@ node /KStars {
 
 ## KStars - SkyMap
 
-＊＊＊＊＊＊＊＊
-
 ```bash
+# Zooming In on SkyMap
 gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.zoomIn
+
+# Zooming Out in SkyMap
 gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.zoomOut
+
+# SkyMap's Current Rotation Angle
 gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.getSkyMapRotation
+
+# Setting the Rotation Angle in SkyMap
 gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.setSkyMapRotation "90.0"
 ```
 

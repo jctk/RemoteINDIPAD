@@ -564,6 +564,48 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn(250, calls[2][1])
         self.assertAlmostEqual(float(calls[2][1][-1]), 250.0)
 
+    def test_skymap_zoom_in_out_actions_fire_only_on_press(self):
+        calls = []
+
+        class FakeInterface:
+            async def call_zoom_in(self):
+                calls.append("zoom_in")
+                return True
+
+            async def call_zoom_out(self):
+                calls.append("zoom_out")
+                return True
+
+        class FakeProxy:
+            def get_interface(self, name):
+                return FakeInterface()
+
+        class FakeBus:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def connect(self):
+                pass
+
+            async def introspect(self, *args):
+                return object()
+
+            def get_proxy_object(self, *args):
+                return FakeProxy()
+
+            def disconnect(self):
+                pass
+
+        with patch("remote_indipad_receiver.MessageBus", FakeBus):
+            fake_bus_type = type("FakeBusType", (), {"SESSION": "session"})
+            with patch("remote_indipad_receiver.BusType", fake_bus_type):
+                receiver.dispatch_abstract_action("SKYMAP_ZOOM_IN", True, "button")
+                receiver.dispatch_abstract_action("SKYMAP_ZOOM_IN", False, "button")
+                receiver.dispatch_abstract_action("SKYMAP_ZOOM_OUT", True, "button")
+                receiver.dispatch_abstract_action("SKYMAP_ZOOM_OUT", False, "button")
+
+        self.assertEqual(calls, ["zoom_in", "zoom_out"])
+
     def test_abstract_axis_names_are_used_instead_of_left_right_sticks(self):
         class FakeJoy:
             def get_numaxes(self):
