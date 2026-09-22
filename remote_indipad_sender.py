@@ -21,8 +21,8 @@ except ImportError:  # pragma: no cover - fallback for missing joystick package
     pygame = None
 
 try:
-    from PySide6.QtCore import QObject, Qt, Signal
-    from PySide6.QtGui import QFont
+    from PySide6.QtCore import QObject, Qt, QTimer, Signal
+    from PySide6.QtGui import QColor, QFont, QPalette
     from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSpinBox, QTextEdit, QVBoxLayout, QWidget, QSizePolicy
 except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is used
     class QObject:
@@ -39,8 +39,9 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
         def emit(self, *args, **kwargs):
             return None
 
+    QTimer = None
     Signal = _FallbackSignal
-    QFont = QCheckBox = QComboBox = QFormLayout = QGridLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QMessageBox = QPushButton = QSpinBox = QTextEdit = QVBoxLayout = QWidget = object
+    QColor = QPalette = QFont = QCheckBox = QComboBox = QFormLayout = QGridLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QMessageBox = QPushButton = QSpinBox = QTextEdit = QVBoxLayout = QWidget = object
     QApplication = None
 
 import remote_indipad_protocol as protocol
@@ -1905,6 +1906,13 @@ class MappingEditorWindow(QMainWindow):
         self.setWindowTitle("INDIPAD Mapping Editor")
         self.resize(760, 540)
         self.selected_device = selected_device
+        self._joy = None
+        self._input_status_timer = None
+        self._input_default_palettes = {}
+        self._deadzone = _clamp_deadzone(
+            getattr(parent, "gui_settings", {}).get("deadzone", DEADZONE)
+            if parent is not None else DEADZONE
+        )
         config = load_axis_config()
         self.mapping = get_default_action_mapping(selected_device, config)
         parent_settings = getattr(parent, "gui_settings", {}) if parent is not None else {}
@@ -1998,6 +2006,68 @@ class MappingEditorWindow(QMainWindow):
         button_row.addWidget(self.close_button)
         layout.addLayout(button_row)
 
+        if QTimer is not None:
+            self._input_status_timer = QTimer(self)
+            self._input_status_timer.setInterval(100)
+            self._input_status_timer.timeout.connect(self._refresh_input_status)
+            self._input_status_timer.start()
+
+    def _set_input_pressed(self, combo, pressed: bool):
+        if combo not in self._input_default_palettes:
+            self._input_default_palettes[combo] = combo.palette()
+
+        if not pressed:
+            combo.setPalette(self._input_default_palettes[combo])
+            return
+
+        palette = combo.palette()
+        palette.setColor(QPalette.ColorRole.Base, QColor("#313141"))
+        palette.setColor(QPalette.ColorRole.Button, QColor("#313141"))
+        combo.setPalette(palette)
+
+    def _find_selected_joystick(self):
+        try:
+            import pygame as gui_pygame
+            if not gui_pygame.get_init():
+                gui_pygame.init()
+            if not gui_pygame.joystick.get_init():
+                gui_pygame.joystick.init()
+
+            selected_name = str(self.selected_device or "").strip().lower()
+            for index in range(gui_pygame.joystick.get_count()):
+                joy = gui_pygame.joystick.Joystick(index)
+                joy.init()
+                if not selected_name or get_gamepad_name(joy).lower() == selected_name:
+                    return joy
+        except Exception:
+            return None
+        return None
+
+    def _refresh_input_status(self):
+        try:
+            joy = self._find_selected_joystick()
+            if joy is None:
+                raise RuntimeError("gamepad unavailable")
+            axes, buttons, dpad = read_gamepad_state(joy)
+
+            for key, combo in self.input_rows.items():
+                if key.startswith("axis_") and isinstance(combo, dict):
+                    axis_state = normalize_axis_value(axes.get(key, 0.0), self._deadzone)
+                    state_name = AXIS_STATE_NAMES[axis_state]
+                    for name, state_combo in combo.items():
+                        self._set_input_pressed(state_combo, name == state_name)
+                elif key.startswith("button_"):
+                    self._set_input_pressed(combo, bool(buttons.get(key, False)))
+                elif key.startswith("dpad_"):
+                    self._set_input_pressed(combo, bool(dpad.get(key, False)))
+        except Exception:
+            for combo in self.input_rows.values():
+                if isinstance(combo, dict):
+                    for state_combo in combo.values():
+                        self._set_input_pressed(state_combo, False)
+                else:
+                    self._set_input_pressed(combo, False)
+
     def reset_to_default(self):
         self.mapping = get_default_action_mapping(self.selected_device, load_axis_config())
         for key, combo in self.input_rows.items():
@@ -2039,6 +2109,8 @@ class MappingEditorWindow(QMainWindow):
         self.mapping_applied.emit(self.mapping)
 
     def closeEvent(self, event):
+        if self._input_status_timer is not None:
+            self._input_status_timer.stop()
         self.closed.emit()
         super().closeEvent(event)
 
