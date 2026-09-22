@@ -215,7 +215,16 @@ def _debug_dispatch(label: str, action: str, pressed: bool, source: str) -> None
 
 ACTIVE_INDI_DEVICE_NAMES = {"mount": "", "focuser": "", "filter": "", "rotator": ""}
 _ROTATOR_HOLD_EVENTS: dict[str, threading.Event] = {}
+_ROTATOR_HOLD_THREADS: dict[str, threading.Thread] = {}
 _ROTATOR_RELEASE_COUNTS: dict[str, int] = {}
+_ACTIVE_MOUNT_DIRECTIONS: set[str] = set()
+
+
+def _track_mount_direction(direction: str, pressed: bool) -> None:
+    if pressed:
+        _ACTIVE_MOUNT_DIRECTIONS.add(direction)
+    else:
+        _ACTIVE_MOUNT_DIRECTIONS.discard(direction)
 
 
 def stop_rotator_hold(direction: str | None = None) -> None:
@@ -224,6 +233,10 @@ def stop_rotator_hold(direction: str | None = None) -> None:
         event = _ROTATOR_HOLD_EVENTS.pop(active_direction, None)
         if event is not None:
             event.set()
+        thread = _ROTATOR_HOLD_THREADS.pop(active_direction, None)
+        # Wait for the loop to actually exit so no queued move can slip out after a later abort.
+        if thread is not None and thread is not threading.current_thread() and thread.is_alive():
+            thread.join(timeout=1.0)
 
 
 def set_active_indi_device(device_type: str, name: str | None) -> None:
@@ -769,7 +782,7 @@ def _run_rotator_hold_loop(direction: str, driver_name: str, stop_event: threadi
     try:
         while not stop_event.is_set():
             state = read_rotator_state(driver_name)
-            if state != "busy":
+            if state != "busy" and not stop_event.is_set():
                 rotation_count += 1
                 if rotation_count <= 5:
                     step_angle = sign * 1.0
@@ -1399,9 +1412,44 @@ def _execute_mount_abort_action(driver_name: str | None = None) -> None:
 
     print(f"[receiver] executed ABORT on {driver_name}", flush=True)
 
+# Helper for starting the mount abort action in a background thread.
+def _start_mount_abort_background(driver_name: str | None = None) -> None:
+    target_name = (driver_name or get_active_indi_device("mount") or "").strip()
+    if not target_name:
+        return
+    thread = threading.Thread(target=_execute_mount_abort_action, args=(target_name,), daemon=True)
+    thread.start()
+
+# Helper for aborting mount motion if a directional move is still active (e.g. on heartbeat loss).
+def stop_mount_motion() -> None:
+    if not _ACTIVE_MOUNT_DIRECTIONS:
+        return
+    _ACTIVE_MOUNT_DIRECTIONS.clear()
+    _start_mount_abort_background()
+
+# Helper for running the rotator/mount emergency stop sequentially in one background thread.
+# Mount and rotator each abort only if they were actually active; concurrent D-Bus connections to
+# KStars (e.g. rotator abort + mount abort at the same time) can make KStars' INDI D-Bus panel hang
+# on Introspect, so these must not run in parallel threads.
+def trigger_heartbeat_emergency_stop() -> None:
+    rotator_active = bool(_ROTATOR_HOLD_EVENTS)
+    rotator_target = get_active_indi_device("rotator") if rotator_active else ""
+    stop_rotator_hold()
+    mount_active = bool(_ACTIVE_MOUNT_DIRECTIONS)
+    _ACTIVE_MOUNT_DIRECTIONS.clear()
+
+    def _run():
+        if rotator_target:
+            execute_rotator_abort(rotator_target)
+        if mount_active:
+            _execute_mount_abort_action()
+
+    threading.Thread(target=_run, daemon=True).start()
+
 # Helper for handling mount north motion.
 def handle_mount_north(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_NORTH", "MOUNT_NORTH", pressed, source)
+    _track_mount_direction("MOUNT_NORTH", pressed)
     if pressed:
         _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_NS", "MOTION_NORTH", True)
     else:
@@ -1410,6 +1458,7 @@ def handle_mount_north(pressed: bool, source: str = "dpad") -> None:
 # Helper for handling mount south motion.
 def handle_mount_south(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_SOUTH", "MOUNT_SOUTH", pressed, source)
+    _track_mount_direction("MOUNT_SOUTH", pressed)
     if pressed:
         _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_NS", "MOTION_SOUTH", True)
     else:
@@ -1418,6 +1467,7 @@ def handle_mount_south(pressed: bool, source: str = "dpad") -> None:
 # Helper for handling mount west motion.
 def handle_mount_west(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_WEST", "MOUNT_WEST", pressed, source)
+    _track_mount_direction("MOUNT_WEST", pressed)
     if pressed:
         _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_WE", "MOTION_WEST", True)
     else:
@@ -1426,6 +1476,7 @@ def handle_mount_west(pressed: bool, source: str = "dpad") -> None:
 # Helper for handling mount east motion.
 def handle_mount_east(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_EAST", "MOUNT_EAST", pressed, source)
+    _track_mount_direction("MOUNT_EAST", pressed)
     if pressed:
         _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_WE", "MOTION_EAST", True)
     else:
@@ -1528,6 +1579,7 @@ def _start_rotator_hold(direction: str, target_name: str) -> None:
         args=(normalized, target_name, stop_event),
         daemon=True,
     )
+    _ROTATOR_HOLD_THREADS[normalized] = thread
     thread.start()
 
 # Helper for starting the rotator abort action in a background thread.
@@ -1819,32 +1871,21 @@ class Receiver:
                         except socket.timeout:
                             if self.heartbeat_is_lost(last_seen, self.heartbeat_timeout):
                                 if not heartbeat_lost:
-                                    self._emit_log(
-                                        f"[receiver] heartbeat timeout: no valid message for {self.heartbeat_timeout:.1f}s"
-                                    )
-                                    stop_rotator_hold()
-                                    _start_rotator_abort_background()
+                                    self._emit_log("[receiver] heartbeat lost")
+                                    trigger_heartbeat_emergency_stop()
                                     heartbeat_lost = True
                             continue
                         except OSError:
                             if not heartbeat_lost:
-                                print(
-                                    f"[receiver] heartbeat timeout: no valid message for {self.heartbeat_timeout:.1f}s",
-                                    flush=True,
-                                )
-                                stop_rotator_hold()
-                                _start_rotator_abort_background()
+                                print("[receiver] heartbeat lost", flush=True)
+                                trigger_heartbeat_emergency_stop()
                                 heartbeat_lost = True
                             break
 
                         if not data:
                             if not heartbeat_lost:
-                                print(
-                                    f"[receiver] heartbeat timeout: no valid message for {self.heartbeat_timeout:.1f}s",
-                                    flush=True,
-                                )
-                                stop_rotator_hold()
-                                _start_rotator_abort_background()
+                                print("[receiver] heartbeat lost", flush=True)
+                                trigger_heartbeat_emergency_stop()
                                 heartbeat_lost = True
                             break
 
