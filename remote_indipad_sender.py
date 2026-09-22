@@ -1297,6 +1297,7 @@ class IndipadWindow(QMainWindow):
         self.resize(720, 520)
         self.worker = None
         self.worker_thread = None
+        self.mapping_editor = None
         self.gui_settings = load_gui_settings()
         geometry = self.gui_settings.get("window_geometry", {})
         if all(key in geometry for key in ("x", "y", "width", "height")):
@@ -1707,14 +1708,26 @@ class IndipadWindow(QMainWindow):
             self.on_disconnect()
 
     def on_edit_mapping(self):
+        if self.mapping_editor is not None:
+            self.mapping_editor.raise_()
+            self.mapping_editor.activateWindow()
+            return
+
         editor = MappingEditorWindow(
             self,
             mapping=self.gui_settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy()),
             selected_device=self.controller_combo.currentText(),
         )
         editor.mapping_applied.connect(self._apply_mapping)
+        editor.closed.connect(self._on_mapping_editor_closed)
+        self.mapping_editor = editor
+        self.mapping_button.setEnabled(False)
         editor.show()
         editor.raise_()
+
+    def _on_mapping_editor_closed(self):
+        self.mapping_editor = None
+        self.mapping_button.setEnabled(True)
 
     def _apply_mapping(self, mapping: dict):
         combo = getattr(self, "controller_combo", None)
@@ -1885,6 +1898,7 @@ class IndipadWindow(QMainWindow):
 
 class MappingEditorWindow(QMainWindow):
     mapping_applied = Signal(dict)
+    closed = Signal()
 
     def __init__(self, parent=None, mapping: dict | None = None, selected_device: str | None = None):
         super().__init__(parent)
@@ -2023,6 +2037,10 @@ class MappingEditorWindow(QMainWindow):
                 next_mapping[key] = value
         self.mapping = resolve_action_mapping(next_mapping)
         self.mapping_applied.emit(self.mapping)
+
+    def closeEvent(self, event):
+        self.closed.emit()
+        super().closeEvent(event)
 
 
 def run_gui():
