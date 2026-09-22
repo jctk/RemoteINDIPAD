@@ -308,7 +308,7 @@ $ source venv/bin/activate
 | FOCUS_OUT | 現在のステップでフォーカスアウトする。送信側で保持するステップ数も合わせて送信する。 |
 | FOCUS_STEP_UP | フォーカスステップUP。ステップは 5→10→50→100→500 の順に増加する。送信側で保持するステップ数の変更のみ。受信側へ FOCUS_STEP_UP を送信しない。 |
 | FOCUS_STEP_DOWN | フォーカスステップDOWN。ステップは 500→100→50→10→5 の順に減少する。送信側で保持するステップ数の変更のみ。受信側へ FOCUS_STEP_DOWN を送信しない。 |
-| FOCUS_STOP | 実行中のフォーカスの移動を停止させる。 |
+| FOCUS_STOP | 実行中のフォーカスの移動を停止させる。(D-BUSコマンドがないため未実装) |
 
 #### フィルターホイール
 
@@ -344,7 +344,7 @@ AXISが前回状態から変化した場合に、状態に割り当てられた�
 
 | 抽象化操作名 | 動作 |
 | - | - |
-| SKYMAP_UP / SKYMAP_DOWN / SKYMAP_LEFT / SKYMAP_RIGHT | SkyMap の移動。上下左右で画面に対して上下左右の移動をする。 |
+| SKYMAP_UP / SKYMAP_DOWN / SKYMAP_LEFT / SKYMAP_RIGHT | SkyMap の移動。上下左右で画面に対して上下左右の移動をする。(D-BUSコマンドがないため未実装) |
 | SKYMAP_ZOOM_IN / SKYMAP_ZOOM_OUT | SkyMap のZoom In/Out。右スティック（上下）。状態に応じて Zoom In / Zoom Out を送信する。 |
 | SKYMAP_ROTATE_UP / SKYMAP_ROTATE_DOWN | SkyMap の回転。右スティック（左右）。状態に応じて回転方向を送信する。 |
 

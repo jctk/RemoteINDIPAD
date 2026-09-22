@@ -256,7 +256,7 @@ def _check_indi_call_result(method_name: str, args: tuple, result) -> None:
     if isinstance(value, bool) and not value:
         raise RuntimeError(f"KStars rejected {method_name}{args} (returned False; check property/argument types)")
 
-
+# INDI D-Bus call helpers
 async def _run_indi_calls(calls: list[tuple[str, tuple]]):
     """Execute a sequence of INDI D-Bus calls over a single connection."""
     if MessageBus is None or BusType is None:
@@ -281,12 +281,12 @@ async def _run_indi_calls(calls: list[tuple[str, tuple]]):
     finally:
         bus.disconnect()
 
-
+# Wrapper for calling a single INDI method asynchronously.
 async def _call_indi_method(method_name: str, *args):
     results = await _run_indi_calls([(method_name, args)])
     return results[0]
 
-
+# Helper for retrieving the number of filter slots for a given driver.
 async def _get_filter_slot_count(driver_name: str) -> int:
     driver_name = str(driver_name or "").strip()
     if not driver_name:
@@ -318,11 +318,11 @@ async def _get_filter_slot_count(driver_name: str) -> int:
 
     return slot_count
 
-
+# Synchronous wrapper for retrieving the number of filter slots for a given driver.
 def get_filter_slot_count(driver_name: str) -> int:
     return asyncio.run(_get_filter_slot_count(driver_name))
 
-
+# Helper for fetching the mount slew rates asynchronously.
 async def _fetch_mount_slew_rates_async(driver_name: str) -> list[str]:
     driver_name = str(driver_name or "").strip()
     if not driver_name:
@@ -370,7 +370,7 @@ async def _fetch_mount_slew_rates_async(driver_name: str) -> list[str]:
     finally:
         bus.disconnect()
 
-
+# Synchronous wrapper for fetching the mount slew rates.
 def get_mount_slew_rates(driver_name: str) -> list[str]:
     driver_name = str(driver_name or "").strip()
     if not driver_name:
@@ -386,7 +386,7 @@ def get_mount_slew_rates(driver_name: str) -> list[str]:
         ACTIVE_INDI_SLEW_RATES[driver_name] = rates
     return rates
 
-
+# Helper for retrieving the current state of a mount slew switch asynchronously.
 async def _get_mount_slew_switch_state_async(driver_name: str, slew_rate: str) -> bool:
     driver_name = str(driver_name or "").strip()
     slew_rate = str(slew_rate or "").strip()
@@ -418,7 +418,7 @@ async def _get_mount_slew_switch_state_async(driver_name: str, slew_rate: str) -
     finally:
         bus.disconnect()
 
-
+# Synchronous wrapper for retrieving the current mount slew rate.
 def get_current_mount_slew_rate(driver_name: str) -> str:
     driver_name = str(driver_name or "").strip()
     if not driver_name:
@@ -434,7 +434,7 @@ def get_current_mount_slew_rate(driver_name: str) -> str:
             continue
     return rates[0]
 
-
+# Synchronous wrapper for setting the mount slew rate.
 def set_mount_slew_rate(driver_name: str, slew_rate: str) -> bool:
     driver_name = str(driver_name or "").strip()
     slew_rate = str(slew_rate or "").strip()
@@ -454,7 +454,7 @@ def set_mount_slew_rate(driver_name: str, slew_rate: str) -> bool:
     print(f"[receiver] set mount slew rate to {slew_rate} on {driver_name}", flush=True)
     return True
 
-
+# Helper for building the D-Bus calls required to execute a focus action.
 def build_focus_dbus_calls(driver_name: str, direction: str, step: int | None = None) -> list[tuple[str, tuple[str, ...]]]:
     driver_name = str(driver_name or "").strip()
     if not driver_name:
@@ -482,7 +482,7 @@ def build_focus_dbus_calls(driver_name: str, direction: str, step: int | None = 
         ("sendProperty", (driver_name, "REL_FOCUS_POSITION")),
     ]
 
-
+# Synchronous wrapper for executing a focus action.
 def execute_focus_action(direction: str, driver_name: str | None = None, step: int | None = None) -> None:
     direction = str(direction).upper()
     target_name = (driver_name or get_active_indi_device("focuser") or "").strip()
@@ -499,7 +499,7 @@ def execute_focus_action(direction: str, driver_name: str | None = None, step: i
 
     print(f"[receiver] executed {direction} on {target_name}", flush=True)
 
-
+# Helper for executing a filter wheel action asynchronously.
 async def _execute_filterwheel_action_async(driver_name: str, direction: str):
     """Read the slot count/current slot and apply the move over one bus connection."""
     if MessageBus is None or BusType is None:
@@ -600,7 +600,7 @@ async def _execute_filterwheel_action_async(driver_name: str, direction: str):
     finally:
         bus.disconnect()
 
-
+# Synchronous wrapper for executing a filter wheel action.
 def execute_filterwheel_action(direction: str, driver_name: str | None = None) -> None:
     direction = str(direction).upper()
     target_name = (driver_name or get_active_indi_device("filter") or "").strip()
@@ -632,7 +632,7 @@ def execute_filterwheel_action(direction: str, driver_name: str | None = None) -
 
     print(f"[receiver] executed {direction} on {target_name}: slot {current_slot} -> {target_slot}", flush=True)
 
-
+# Helper for normalizing the target angle of a rotator action.
 def normalize_rotator_target_angle(current_angle, delta_angle, max_rotation=360.0) -> float:
     try:
         current_value = float(current_angle)
@@ -657,7 +657,7 @@ def normalize_rotator_target_angle(current_angle, delta_angle, max_rotation=360.
         target_value = max_value
     return float(target_value)
 
-
+# Helper for executing a rotator action asynchronously.
 async def _execute_rotator_action_async(driver_name: str, direction: str, angle: int | float | None = None):
     """Read the rotator state, clamp the target angle to the fixed 0..360 range, and move it in one bus session."""
     if MessageBus is None or BusType is None:
@@ -726,7 +726,7 @@ async def _execute_rotator_action_async(driver_name: str, direction: str, angle:
     finally:
         bus.disconnect()
 
-
+# Synchronous wrapper for reading the current state of the rotator.
 def read_rotator_state(driver_name: str | None = None) -> str:
     target_name = (driver_name or get_active_indi_device("rotator") or "").strip()
     if not target_name:
@@ -755,7 +755,7 @@ def read_rotator_state(driver_name: str | None = None) -> str:
         print(f"[receiver] D-Bus call error: getPropertyState(ABS_ROTATOR_ANGLE) -> {exc}", flush=True)
         return ""
 
-
+# Helper for running a continuous rotator hold loop in a separate thread.
 def _run_rotator_hold_loop(direction: str, driver_name: str, stop_event: threading.Event, interval: float = 0.05, executor=None) -> None:
     if executor is None:
         executor = execute_rotator_action
@@ -782,7 +782,7 @@ def _run_rotator_hold_loop(direction: str, driver_name: str, stop_event: threadi
     finally:
         stop_rotator_hold(direction)
 
-
+# Synchronous wrapper for executing a rotator action.
 def execute_rotator_action(direction: str, angle: int | float | None = None, driver_name: str | None = None) -> float | None:
     direction = str(direction).upper()
     target_name = (driver_name or get_active_indi_device("rotator") or "").strip()
@@ -813,7 +813,7 @@ def execute_rotator_action(direction: str, angle: int | float | None = None, dri
     )
     return float(target_angle)
 
-
+# Helper for aborting the current rotator motion asynchronously.
 async def _execute_rotator_abort_async(driver_name: str):
     """Abort the current rotator motion using the INDI abort switch."""
     if MessageBus is None or BusType is None:
@@ -844,7 +844,7 @@ async def _execute_rotator_abort_async(driver_name: str):
     finally:
         bus.disconnect()
 
-
+# Synchronous wrapper for aborting the current rotator motion.
 def execute_rotator_abort(driver_name: str | None = None) -> bool:
     target_name = (driver_name or get_active_indi_device("rotator") or "").strip()
     if not target_name:
@@ -860,7 +860,7 @@ def execute_rotator_abort(driver_name: str | None = None) -> bool:
     print(f"[receiver] executed CAA_ROTATE_ABORT on {target_name}", flush=True)
     return bool(result)
 
-
+# Helper for loading the GUI settings from a JSON file.
 def load_gui_settings(path: str | Path | None = None):
     config_path = Path(path) if path is not None else GUI_SETTINGS_PATH
     defaults = DEFAULT_GUI_SETTINGS.copy()
@@ -911,7 +911,7 @@ def load_gui_settings(path: str | Path | None = None):
         "window_geometry": normalized_geometry,
     }
 
-
+# Synchronous wrapper for saving the GUI settings to a JSON file.
 def save_gui_settings(settings: dict, path: str | Path | None = None):
     config_path = Path(path) if path is not None else GUI_SETTINGS_PATH
     port_value = settings.get("port", 50007)
@@ -951,11 +951,11 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         json.dump(payload, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
 
-
+# Helper for extracting the underlying value from a D-Bus value object.
 def _dbus_value(value):
     return getattr(value, "value", value)
 
-
+# Helper for classifying an INDI driver based on its interface value.
 def classify_indi_driver(driver_interface_value) -> dict[str, bool]:
     try:
         driver_interface = int(_dbus_value(driver_interface_value))
@@ -969,7 +969,7 @@ def classify_indi_driver(driver_interface_value) -> dict[str, bool]:
         "rotator": bool(driver_interface & ROTATOR_INTERFACE),
     }
 
-
+# Helper for fetching the list of available INDI devices asynchronously.
 async def fetch_indi_device_list():
     if MessageBus is None or BusType is None:
         raise RuntimeError("dbus-next is required for INDI scanning")
@@ -1015,7 +1015,7 @@ async def fetch_indi_device_list():
     finally:
         bus.disconnect()
 
-
+# Helper class for redirecting console output to the GUI.
 class GuiConsoleStream:
     def __init__(self, window):
         self.window = window
@@ -1041,7 +1041,7 @@ class GuiConsoleStream:
     def isatty(self):
         return True
 
-
+# Main window class for the INDIpad receiver GUI.
 class ReceiverWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1351,7 +1351,7 @@ class ReceiverWindow(QMainWindow):
             sys.stderr = self._original_stderr
         super().closeEvent(event)
 
-
+# GUI entry point
 def run_gui():
     if QObject is None or QApplication is None:
         raise RuntimeError("PySide6 is required to run the receiver GUI. Install it with: pip install pyside6")
@@ -1360,7 +1360,7 @@ def run_gui():
     window.show()
     return app.exec()
 
-
+# Mount control actions
 def _execute_mount_switch_action(driver_name: str, property_name: str, switch_name: str, enabled: bool) -> None:
     driver_name = str(driver_name or "").strip()
     if not driver_name:
@@ -1380,7 +1380,7 @@ def _execute_mount_switch_action(driver_name: str, property_name: str, switch_na
 
     print(f"[receiver] executed mount {property_name}/{switch_name} -> {state} on {driver_name}", flush=True)
 
-
+# Helper for aborting the current mount motion asynchronously.
 def _execute_mount_abort_action(driver_name: str | None = None) -> None:
     driver_name = str(driver_name or get_active_indi_device("mount") or "").strip()
     if not driver_name:
@@ -1399,7 +1399,7 @@ def _execute_mount_abort_action(driver_name: str | None = None) -> None:
 
     print(f"[receiver] executed ABORT on {driver_name}", flush=True)
 
-
+# Helper for handling mount north motion.
 def handle_mount_north(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_NORTH", "MOUNT_NORTH", pressed, source)
     if pressed:
@@ -1407,7 +1407,7 @@ def handle_mount_north(pressed: bool, source: str = "dpad") -> None:
     else:
         _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_NS", "MOTION_NORTH", False)
 
-
+# Helper for handling mount south motion.
 def handle_mount_south(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_SOUTH", "MOUNT_SOUTH", pressed, source)
     if pressed:
@@ -1415,7 +1415,7 @@ def handle_mount_south(pressed: bool, source: str = "dpad") -> None:
     else:
         _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_NS", "MOTION_SOUTH", False)
 
-
+# Helper for handling mount west motion.
 def handle_mount_west(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_WEST", "MOUNT_WEST", pressed, source)
     if pressed:
@@ -1423,7 +1423,7 @@ def handle_mount_west(pressed: bool, source: str = "dpad") -> None:
     else:
         _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_WE", "MOTION_WEST", False)
 
-
+# Helper for handling mount east motion.
 def handle_mount_east(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_EAST", "MOUNT_EAST", pressed, source)
     if pressed:
@@ -1431,7 +1431,7 @@ def handle_mount_east(pressed: bool, source: str = "dpad") -> None:
     else:
         _execute_mount_switch_action(get_active_indi_device("mount"), "TELESCOPE_MOTION_WE", "MOTION_EAST", False)
 
-
+# Helper for handling mount step up action.
 def handle_mount_step_up(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("MOUNT_STEP_UP", "MOUNT_STEP_UP", pressed, source)
     if not pressed:
@@ -1451,7 +1451,7 @@ def handle_mount_step_up(pressed: bool, source: str = "button") -> None:
     next_index = min(len(rates) - 1, current_index + 1)
     set_mount_slew_rate(driver_name, rates[next_index])
 
-
+# Helper for handling mount step down action.
 def handle_mount_step_down(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("MOUNT_STEP_DOWN", "MOUNT_STEP_DOWN", pressed, source)
     if not pressed:
@@ -1471,49 +1471,50 @@ def handle_mount_step_down(pressed: bool, source: str = "button") -> None:
     previous_index = max(0, current_index - 1)
     set_mount_slew_rate(driver_name, rates[previous_index])
 
-
+# Helper for handling mount stop action.
 def handle_mount_stop(pressed: bool, source: str = "dpad") -> None:
     _debug_dispatch("MOUNT_STOP", "MOUNT_STOP", pressed, source)
     if pressed:
         _execute_mount_abort_action()
 
-
+# Helper for handling focus in action.
 def handle_focus_in(pressed: bool, source: str = "button", step: int | None = None) -> None:
     _debug_dispatch("FOCUS_IN", "FOCUS_IN", pressed, source)
     if pressed:
         execute_focus_action("FOCUS_IN", step=step)
 
-
+# Helper for handling focus out action.
 def handle_focus_out(pressed: bool, source: str = "button", step: int | None = None) -> None:
     _debug_dispatch("FOCUS_OUT", "FOCUS_OUT", pressed, source)
     if pressed:
         execute_focus_action("FOCUS_OUT", step=step)
 
-
+# Helper for handling focus step up action.
 def handle_focus_step_up(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("FOCUS_STEP_UP", "FOCUS_STEP_UP", pressed, source)
 
-
+# Helper for handling focus step down action.
 def handle_focus_step_down(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("FOCUS_STEP_DOWN", "FOCUS_STEP_DOWN", pressed, source)
 
-
+# Helper for handling focus stop action.
+# - There is no D-BUS action corresponding to FOCUS_STOP, so it has not been implemented.
 def handle_focus_stop(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("FOCUS_STOP", "FOCUS_STOP", pressed, source)
 
-
+# Helper for handling filter wheel previous action.
 def handle_filterwheel_prev(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("FILTERWHEEL_PREV", "FILTERWHEEL_PREV", pressed, source)
     if pressed:
         execute_filterwheel_action("FILTERWHEEL_PREV")
 
-
+# Helper for handling filter wheel next action.
 def handle_filterwheel_next(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("FILTERWHEEL_NEXT", "FILTERWHEEL_NEXT", pressed, source)
     if pressed:
         execute_filterwheel_action("FILTERWHEEL_NEXT")
 
-
+# Helper for starting the rotator hold loop in a background thread.
 def _start_rotator_hold(direction: str, target_name: str) -> None:
     normalized = str(direction).upper()
     if not target_name:
@@ -1529,7 +1530,7 @@ def _start_rotator_hold(direction: str, target_name: str) -> None:
     )
     thread.start()
 
-
+# Helper for starting the rotator abort action in a background thread.
 def _start_rotator_abort_background(target_name: str | None = None) -> None:
     driver_name = (target_name or get_active_indi_device("rotator") or "").strip()
     if not driver_name:
@@ -1537,14 +1538,14 @@ def _start_rotator_abort_background(target_name: str | None = None) -> None:
     thread = threading.Thread(target=execute_rotator_abort, args=(driver_name,), daemon=True)
     thread.start()
 
-
+# Helper for determining whether the rotator release should be aborted.
 def _should_abort_rotator_release(direction: str) -> bool:
     normalized = str(direction).upper()
     previous = int(_ROTATOR_RELEASE_COUNTS.get(normalized, 0))
     _ROTATOR_RELEASE_COUNTS[normalized] = previous + 1
     return True
 
-
+# Helper for handling counter-clockwise rotation of the CAA rotator.
 def handle_caa_rotate_counter_clockwise(pressed: bool, source: str = "button", angle: int | None = None) -> None:
     _debug_dispatch("CAA_ROTATE_COUNTER_CLOCKWISE", "CAA_ROTATE_COUNTER_CLOCKWISE", pressed, source)
     target_name = (get_active_indi_device("rotator") or "").strip()
@@ -1555,7 +1556,7 @@ def handle_caa_rotate_counter_clockwise(pressed: bool, source: str = "button", a
     if _should_abort_rotator_release("CAA_ROTATE_COUNTER_CLOCKWISE"):
         _start_rotator_abort_background(target_name)
 
-
+# Helper for handling clockwise rotation of the CAA rotator.
 def handle_caa_rotate_clockwise(pressed: bool, source: str = "button", angle: int | None = None) -> None:
     _debug_dispatch("CAA_ROTATE_CLOCKWISE", "CAA_ROTATE_CLOCKWISE", pressed, source)
     target_name = (get_active_indi_device("rotator") or "").strip()
@@ -1566,17 +1567,18 @@ def handle_caa_rotate_clockwise(pressed: bool, source: str = "button", angle: in
     if _should_abort_rotator_release("CAA_ROTATE_CLOCKWISE"):
         _start_rotator_abort_background(target_name)
 
-
+# Helper for handling abort action of the CAA rotator.
 def handle_caa_rotate_abort(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("CAA_ROTATE_ABORT", "CAA_ROTATE_ABORT", pressed, source)
     if not pressed:
         _start_rotator_abort_background()
 
-
+# Helper for handling sky map move action.
+# - There is no D-BUS action corresponding to SKYMAP_UP / SKYMAP_DOWN / SKYMAP_LEFT / SKYMAP_RIGHT, so it has not been implemented.
 def handle_skymap_move(pressed: bool, source: str = "stick") -> None:
     _debug_dispatch("SKYMAP_MOVE", "SKYMAP_MOVE", pressed, source)
 
-
+# Helper for retrieving the current sky map rotation asynchronously.
 async def _get_skymap_rotation_async() -> float:
     if MessageBus is None or BusType is None:
         raise RuntimeError("dbus-next is required for KStars sky map operations")
@@ -1598,7 +1600,7 @@ async def _get_skymap_rotation_async() -> float:
     finally:
         bus.disconnect()
 
-
+# Helper for setting the sky map rotation asynchronously.
 async def _set_skymap_rotation_async(angle: float) -> None:
     if MessageBus is None or BusType is None:
         raise RuntimeError("dbus-next is required for KStars sky map operations")
@@ -1618,14 +1620,14 @@ async def _set_skymap_rotation_async(angle: float) -> None:
     finally:
         bus.disconnect()
 
-
+# Helper for wrapping the sky map rotation angle within the [0, 360) range.
 def _wrap_skymap_rotation(angle: float) -> float:
     wrapped = float(angle) % 360.0
     if wrapped < 0.0:
         wrapped += 360.0
     return wrapped
 
-
+# Helper for executing a sky map rotation in the specified direction.
 def execute_skymap_rotate(direction: str) -> bool:
     direction = str(direction).strip().lower()
     if direction not in {"up", "down"}:
@@ -1641,7 +1643,7 @@ def execute_skymap_rotate(direction: str) -> bool:
         print(f"[receiver] KStars sky map rotate {direction} D-Bus call error: {exc}", flush=True)
         return False
 
-
+# Helper for executing a sky map zoom action asynchronously.
 async def _execute_skymap_zoom_action(method_name: str) -> None:
     if MessageBus is None or BusType is None:
         raise RuntimeError("dbus-next is required for KStars sky map operations")
@@ -1661,7 +1663,7 @@ async def _execute_skymap_zoom_action(method_name: str) -> None:
     finally:
         bus.disconnect()
 
-
+# Helper for executing a sky map zoom in the specified direction.
 def execute_skymap_zoom(direction: str) -> bool:
     direction = str(direction).strip().lower()
     if direction not in {"in", "out"}:
@@ -1674,35 +1676,32 @@ def execute_skymap_zoom(direction: str) -> bool:
         print(f"[receiver] KStars sky map zoom {direction} D-Bus call error: {exc}", flush=True)
         return False
 
-
+# Helper for handling sky map zoom in action.
 def handle_skymap_zoom_in(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("SKYMAP_ZOOM_IN", "SKYMAP_ZOOM_IN", pressed, source)
     if pressed:
         execute_skymap_zoom("in")
 
-
+# Helper for handling sky map zoom out action.
 def handle_skymap_zoom_out(pressed: bool, source: str = "button") -> None:
     _debug_dispatch("SKYMAP_ZOOM_OUT", "SKYMAP_ZOOM_OUT", pressed, source)
     if pressed:
         execute_skymap_zoom("out")
 
-
+# Helper for handling sky map rotate up action.
 def handle_skymap_rotate_up(pressed: bool, source: str = "stick") -> None:
     _debug_dispatch("SKYMAP_ROTATE_UP", "SKYMAP_ROTATE_UP", pressed, source)
     if pressed:
         execute_skymap_rotate("up")
 
-
+# Helper for handling sky map rotate down action.
 def handle_skymap_rotate_down(pressed: bool, source: str = "stick") -> None:
     _debug_dispatch("SKYMAP_ROTATE_DOWN", "SKYMAP_ROTATE_DOWN", pressed, source)
     if pressed:
         execute_skymap_rotate("down")
 
-
-def handle_skymap_rotate(pressed: bool, source: str = "stick") -> None:
-    _debug_dispatch("SKYMAP_ROTATE", "SKYMAP_ROTATE", pressed, source)
-
-
+#
+#
 _DISPATCH_TABLE = {
     "MOUNT_NORTH": handle_mount_north,
     "MOUNT_SOUTH": handle_mount_south,
@@ -1724,12 +1723,11 @@ _DISPATCH_TABLE = {
     "SKYMAP_MOVE": handle_skymap_move,
     "SKYMAP_ZOOM_IN": handle_skymap_zoom_in,
     "SKYMAP_ZOOM_OUT": handle_skymap_zoom_out,
-    "SKYMAP_ROTATE": handle_skymap_rotate,
     "SKYMAP_ROTATE_UP": handle_skymap_rotate_up,
     "SKYMAP_ROTATE_DOWN": handle_skymap_rotate_down,
 }
 
-
+# Helper for handling sky map rotate left action.
 def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown", step: int | None = None, angle: int | None = None) -> None:
     handler = _DISPATCH_TABLE.get(action)
     if handler is None:
@@ -1750,7 +1748,7 @@ def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown"
         return
     handler(bool(pressed), str(source))
 
-
+# Receiver class for handling incoming connections and dispatching actions.
 class Receiver:
     def __init__(self, host: str = HOST, port: int = PORT, heartbeat_timeout: float = 5.0, log_heartbeat: bool = False, log_callback=None):
         self.host = host
