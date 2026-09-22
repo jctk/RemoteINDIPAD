@@ -669,6 +669,54 @@ class ProtocolTests(unittest.TestCase):
 
         self.assertEqual(calls, ["zoom_in", "zoom_out"])
 
+    def test_skymap_rotate_up_down_actions_fire_only_on_press_and_wrap_angle(self):
+        calls = []
+
+        class FakeInterface:
+            current_rotation = 0.0
+
+            async def call_get_sky_map_rotation(self):
+                calls.append(("get", self.current_rotation))
+                return self.current_rotation
+
+            async def call_set_sky_map_rotation(self, angle):
+                calls.append(("set", float(angle)))
+                self.__class__.current_rotation = float(angle)
+                return True
+
+        class FakeProxy:
+            def get_interface(self, name):
+                return FakeInterface()
+
+        class FakeBus:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def connect(self):
+                pass
+
+            async def introspect(self, *args):
+                return object()
+
+            def get_proxy_object(self, *args):
+                return FakeProxy()
+
+            def disconnect(self):
+                pass
+
+        with patch("remote_indipad_receiver.MessageBus", FakeBus):
+            fake_bus_type = type("FakeBusType", (), {"SESSION": "session"})
+            with patch("remote_indipad_receiver.BusType", fake_bus_type):
+                receiver.dispatch_abstract_action("SKYMAP_ROTATE_DOWN", True, "button")
+                receiver.dispatch_abstract_action("SKYMAP_ROTATE_DOWN", False, "button")
+                receiver.dispatch_abstract_action("SKYMAP_ROTATE_UP", True, "button")
+                receiver.dispatch_abstract_action("SKYMAP_ROTATE_UP", False, "button")
+
+        self.assertEqual(calls[0], ("get", 0.0))
+        self.assertEqual(calls[1], ("set", 355.0))
+        self.assertEqual(calls[2], ("get", 355.0))
+        self.assertEqual(calls[3], ("set", 0.0))
+
     def test_abstract_axis_names_are_used_instead_of_left_right_sticks(self):
         class FakeJoy:
             def get_numaxes(self):

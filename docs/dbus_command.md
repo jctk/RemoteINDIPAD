@@ -257,7 +257,7 @@ gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kd
 gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.getSkyMapRotation
 
 # Setting the Rotation Angle in SkyMap
-gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.setSkyMapRotation "90.0"
+gdbus call --session --dest org.kde.kstars --object-path /KStars --method org.kde.kstars.setSkyMapRotation "5.0"
 ```
 
 # INDI

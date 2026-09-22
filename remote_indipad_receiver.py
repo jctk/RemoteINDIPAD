@@ -1570,6 +1570,71 @@ def handle_skymap_move(pressed: bool, source: str = "stick") -> None:
     _debug_dispatch("SKYMAP_MOVE", "SKYMAP_MOVE", pressed, source)
 
 
+async def _get_skymap_rotation_async() -> float:
+    if MessageBus is None or BusType is None:
+        raise RuntimeError("dbus-next is required for KStars sky map operations")
+
+    bus = MessageBus(bus_type=BusType.SESSION)
+    await bus.connect()
+    try:
+        introspection = await bus.introspect("org.kde.kstars", "/KStars")
+        proxy = bus.get_proxy_object("org.kde.kstars", "/KStars", introspection)
+        interface = proxy.get_interface("org.kde.kstars")
+        method = getattr(interface, "call_get_sky_map_rotation", None)
+        if method is None:
+            method = getattr(interface, "getSkyMapRotation", None)
+        if method is None:
+            raise AttributeError("org.kde.kstars does not expose getSkyMapRotation")
+        value = await method()
+        rotation = float(_dbus_value(value))
+        return rotation
+    finally:
+        bus.disconnect()
+
+
+async def _set_skymap_rotation_async(angle: float) -> None:
+    if MessageBus is None or BusType is None:
+        raise RuntimeError("dbus-next is required for KStars sky map operations")
+
+    bus = MessageBus(bus_type=BusType.SESSION)
+    await bus.connect()
+    try:
+        introspection = await bus.introspect("org.kde.kstars", "/KStars")
+        proxy = bus.get_proxy_object("org.kde.kstars", "/KStars", introspection)
+        interface = proxy.get_interface("org.kde.kstars")
+        method = getattr(interface, "call_set_sky_map_rotation", None)
+        if method is None:
+            method = getattr(interface, "setSkyMapRotation", None)
+        if method is None:
+            raise AttributeError("org.kde.kstars does not expose setSkyMapRotation")
+        await method(float(angle))
+    finally:
+        bus.disconnect()
+
+
+def _wrap_skymap_rotation(angle: float) -> float:
+    wrapped = float(angle) % 360.0
+    if wrapped < 0.0:
+        wrapped += 360.0
+    return wrapped
+
+
+def execute_skymap_rotate(direction: str) -> bool:
+    direction = str(direction).strip().lower()
+    if direction not in {"up", "down"}:
+        raise ValueError(f"unsupported skymap rotation direction: {direction!r}")
+
+    try:
+        current_rotation = asyncio.run(_get_skymap_rotation_async())
+        delta = 5.0 if direction == "up" else -5.0
+        next_rotation = _wrap_skymap_rotation(current_rotation + delta)
+        asyncio.run(_set_skymap_rotation_async(next_rotation))
+        return True
+    except Exception as exc:
+        print(f"[receiver] KStars sky map rotate {direction} D-Bus call error: {exc}", flush=True)
+        return False
+
+
 async def _execute_skymap_zoom_action(method_name: str) -> None:
     if MessageBus is None or BusType is None:
         raise RuntimeError("dbus-next is required for KStars sky map operations")
@@ -1615,6 +1680,18 @@ def handle_skymap_zoom_out(pressed: bool, source: str = "button") -> None:
         execute_skymap_zoom("out")
 
 
+def handle_skymap_rotate_up(pressed: bool, source: str = "stick") -> None:
+    _debug_dispatch("SKYMAP_ROTATE_UP", "SKYMAP_ROTATE_UP", pressed, source)
+    if pressed:
+        execute_skymap_rotate("up")
+
+
+def handle_skymap_rotate_down(pressed: bool, source: str = "stick") -> None:
+    _debug_dispatch("SKYMAP_ROTATE_DOWN", "SKYMAP_ROTATE_DOWN", pressed, source)
+    if pressed:
+        execute_skymap_rotate("down")
+
+
 def handle_skymap_rotate(pressed: bool, source: str = "stick") -> None:
     _debug_dispatch("SKYMAP_ROTATE", "SKYMAP_ROTATE", pressed, source)
 
@@ -1641,6 +1718,8 @@ _DISPATCH_TABLE = {
     "SKYMAP_ZOOM_IN": handle_skymap_zoom_in,
     "SKYMAP_ZOOM_OUT": handle_skymap_zoom_out,
     "SKYMAP_ROTATE": handle_skymap_rotate,
+    "SKYMAP_ROTATE_UP": handle_skymap_rotate_up,
+    "SKYMAP_ROTATE_DOWN": handle_skymap_rotate_down,
 }
 
 
@@ -1658,7 +1737,7 @@ def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown"
     if action == "CAA_ROTATE_ABORT":
         handler(bool(pressed), str(source))
         return
-    if action in {"SKYMAP_ZOOM_IN", "SKYMAP_ZOOM_OUT"}:
+    if action in {"SKYMAP_ZOOM_IN", "SKYMAP_ZOOM_OUT", "SKYMAP_ROTATE_UP", "SKYMAP_ROTATE_DOWN"}:
         if bool(pressed):
             handler(True, str(source))
         return
