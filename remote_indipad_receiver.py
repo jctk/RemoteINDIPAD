@@ -569,9 +569,15 @@ async def _execute_filterwheel_action_async(driver_name: str, direction: str):
             return current_slot, current_slot, slot_count, True
 
         if direction == "FILTERWHEEL_PREV":
-            target_slot = max(1, current_slot - 1)
+            if current_slot <= 1:
+                target_slot = slot_count
+            else:
+                target_slot = current_slot - 1
         elif direction == "FILTERWHEEL_NEXT":
-            target_slot = min(slot_count, current_slot + 1)
+            if current_slot >= slot_count:
+                target_slot = 1
+            else:
+                target_slot = current_slot + 1
         else:
             raise ValueError(f"unsupported filterwheel direction: {direction}")
 
