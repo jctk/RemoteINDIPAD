@@ -1251,7 +1251,7 @@ class ReceiverWindow(QMainWindow):
         self.log(f"[gui] heartbeat log {'enabled' if enabled else 'disabled'}")
 
     def start_receiver(self):
-        self.save_settings()
+        # No save_settings() here: combos still hold placeholder items until the INDI scan completes.
         host = self.host_edit.text().strip() or "0.0.0.0"
         port_text = self.port_edit.text().strip() or "50007"
         try:
@@ -1297,13 +1297,20 @@ class ReceiverWindow(QMainWindow):
             self.filter_combo.addItems(filter_options)
             self.rotator_combo.addItems(rotator_options)
 
-            self.mount_combo.setCurrentIndex(0 if not result.get("mount") else 1)
-            self.focuser_combo.setCurrentIndex(0 if not result.get("focuser") else 1)
-            self.filter_combo.setCurrentIndex(0 if not result.get("filter") else 1)
-            self.rotator_combo.setCurrentIndex(0 if not result.get("rotator") else 1)
+            def restore_or_default(combo, saved_value, discovered):
+                if saved_value and saved_value in discovered:
+                    combo.setCurrentIndex(combo.findText(saved_value))
+                else:
+                    combo.setCurrentIndex(0 if not discovered else 1)
+
+            restore_or_default(self.mount_combo, self.gui_settings.get("mount", ""), result.get("mount", []))
+            restore_or_default(self.focuser_combo, self.gui_settings.get("focuser", ""), result.get("focuser", []))
+            restore_or_default(self.filter_combo, self.gui_settings.get("filter", ""), result.get("filter", []))
+            restore_or_default(self.rotator_combo, self.gui_settings.get("rotator", ""), result.get("rotator", []))
 
             self._sync_active_indi_devices()
             self._refresh_filter_slot_count()
+            self.save_settings()
 
             if result.get("mount") or result.get("focuser") or result.get("filter") or result.get("rotator"):
                 self.log("[gui] INDI scan complete")
