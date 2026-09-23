@@ -41,6 +41,20 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(recovered["dpad"]["dpad_right"])
         self.assertEqual(recovered["buttons"]["button_5"], True)
 
+        def test_json_comment_stripping_preserves_string_values(self):
+                content = '''
+                // Profile label
+                {
+                    "url": "https://example.test/path#fragment", # inline comment
+                    /* block
+                         comment */
+                    "name": "JC-U3712T"
+                }
+                '''
+                loaded = protocol.json.loads(protocol.strip_json_comments(content))
+                self.assertEqual(loaded["url"], "https://example.test/path#fragment")
+                self.assertEqual(loaded["name"], "JC-U3712T")
+
     def test_validate_message_rejects_missing_axes(self):
         invalid = {"ts": 1.0, "type": "axis", "device": "gamepad", "dpad": {}, "buttons": {}, "mode": "slew"}
         self.assertFalse(protocol.validate_message(invalid))

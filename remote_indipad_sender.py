@@ -363,8 +363,7 @@ def load_gui_settings(path: str | Path | None = None):
         return defaults.copy()
 
     try:
-        with open(config_path, "r", encoding="utf-8") as handle:
-            loaded = json.load(handle)
+        loaded = protocol.load_json_file(config_path)
     except (OSError, ValueError):
         return defaults.copy()
 
@@ -452,8 +451,7 @@ def load_axis_config(path: str | Path | None = None):
         return config
 
     try:
-        with open(config_path, "r", encoding="utf-8") as handle:
-            loaded = json.load(handle)
+        loaded = protocol.load_json_file(config_path)
     except (OSError, ValueError):
         config["profiles"]["default"] = {}
         return config

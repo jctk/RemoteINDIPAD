@@ -1,6 +1,60 @@
 import json
+from pathlib import Path
 import time
 from typing import Any, Dict
+
+
+def strip_json_comments(source: str) -> str:
+    """Remove JSONC-style comments while preserving string literals."""
+    result: list[str] = []
+    index = 0
+    in_string = False
+    escaped = False
+
+    while index < len(source):
+        character = source[index]
+        next_character = source[index + 1] if index + 1 < len(source) else ""
+
+        if in_string:
+            result.append(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            index += 1
+            continue
+
+        if character == '"':
+            in_string = True
+            result.append(character)
+            index += 1
+        elif character == "#" or (character == "/" and next_character == "/"):
+            if character == "/":
+                index += 1
+            index += 1
+            while index < len(source) and source[index] not in "\r\n":
+                index += 1
+        elif character == "/" and next_character == "*":
+            index += 2
+            while index < len(source) and not (source[index] == "*" and index + 1 < len(source) and source[index + 1] == "/"):
+                if source[index] in "\r\n":
+                    result.append(source[index])
+                index += 1
+            if index < len(source):
+                index += 2
+        else:
+            result.append(character)
+            index += 1
+
+    return "".join(result)
+
+
+def load_json_file(path: str | Path) -> Any:
+    """Load a local JSON configuration file that may contain comments."""
+    with open(path, "r", encoding="utf-8") as handle:
+        return json.loads(strip_json_comments(handle.read()))
 
 
 def build_payload(

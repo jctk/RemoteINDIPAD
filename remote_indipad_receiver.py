@@ -11,6 +11,8 @@ import builtins
 from pathlib import Path
 from typing import Optional
 
+import remote_indipad_protocol as protocol
+
 try:
     import ctypes
 except ImportError:  # pragma: no cover - fallback for missing ctypes
@@ -882,8 +884,7 @@ def load_gui_settings(path: str | Path | None = None):
         return defaults.copy()
 
     try:
-        with open(config_path, "r", encoding="utf-8") as handle:
-            loaded = json.load(handle)
+        loaded = protocol.load_json_file(config_path)
     except (OSError, ValueError):
         return defaults.copy()
 

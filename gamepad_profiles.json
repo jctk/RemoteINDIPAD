@@ -11,48 +11,48 @@
         "dpad_down": "MOUNT_SOUTH",
         "dpad_left": "MOUNT_WEST",
         "dpad_right": "MOUNT_EAST",
-        "button_1": "CAA_ROTATE_COUNTER_CLOCKWISE",
-        "button_2": "CAA_ROTATE_CLOCKWISE",
-        "button_3": "FOCUS_IN",
-        "button_4": "FOCUS_OUT",
-        "button_5": "FILTERWHEEL_PREV",
-        "button_6": "FILTERWHEEL_NEXT",
-        "button_7": "",
-        "button_8": "",
-        "button_9": "CAA_ROTATE_ABORT",
-        "button_10": "MOUNT_STOP",
+        "button_1": "CAA_ROTATE_COUNTER_CLOCKWISE", // A button
+        "button_2": "CAA_ROTATE_CLOCKWISE",         // B button
+        "button_3": "FOCUS_IN",                     // X button
+        "button_4": "FOCUS_OUT",                    // Y button
+        "button_5": "FILTERWHEEL_PREV",             // L button
+        "button_6": "FILTERWHEEL_NEXT",             // R button
+        "button_7": "",                             // View button
+        "button_8": "",                             // Menu button
+        "button_9": "CAA_ROTATE_ABORT",             // Left Stick button
+        "button_10": "MOUNT_STOP",                  // Right Stick button
         "button_11": "",
         "button_12": "",
         "button_13": "",
         "button_14": "",
         "button_15": "",
         "button_16": "",
-        "axis_1": {
+        "axis_1": {                                 // Left Stick Horizontal
           "NEGATIVE": "MOUNT_STEP_DOWN",
           "CENTER": "",
           "POSITIVE": "MOUNT_STEP_UP"
         },
-        "axis_2": {
+        "axis_2": {                                 // Left Stick Vertical
           "NEGATIVE": "FOCUS_STEP_UP",
           "CENTER": "",
           "POSITIVE": "FOCUS_STEP_DOWN"
         },
-        "axis_3": {
+        "axis_3": {                                 // Right Stick Horizontal
           "NEGATIVE": "SKYMAP_ROTATE_DOWN",
           "CENTER": "",
           "POSITIVE": "SKYMAP_ROTATE_UP"
         },
-        "axis_4": {
+        "axis_4": {                                 // Right Stick Vertical
           "NEGATIVE": "SKYMAP_ZOOM_IN",
           "CENTER": "",
           "POSITIVE": "SKYMAP_ZOOM_OUT"
         },
-        "axis_5": {
+        "axis_5": {                                 // Left Trigger
           "NEGATIVE": "",
           "CENTER": "",
           "POSITIVE": ""
         },
-        "axis_6": {
+        "axis_6": {                                 // Right Trigger
           "NEGATIVE": "",
           "CENTER": "",
           "POSITIVE": ""
@@ -69,42 +69,42 @@
         "dpad_down": "MOUNT_SOUTH",
         "dpad_left": "MOUNT_WEST",
         "dpad_right": "MOUNT_EAST",
-        "button_1": "FOCUS_STEP_DOWN",
-        "button_2": "FOCUS_STEP_UP",
+        "button_1": "FOCUS_IN",
+        "button_2": "FOCUS_OUT",
         "button_3": "CAA_ROTATE_COUNTER_CLOCKWISE",
         "button_4": "CAA_ROTATE_CLOCKWISE",
-        "button_5": "MOUNT_STEP_UP",
-        "button_6": "FOCUS_OUT",
-        "button_7": "MOUNT_STEP_DOWN",
-        "button_8": "FOCUS_IN",
-        "button_9": "FOCUS_STOP",
-        "button_10": "MOUNT_STOP",
-        "button_11": "FILTERWHEEL_PREV",
-        "button_12": "FILTERWHEEL_NEXT",
-        "axis_1": {
-          "NEGATIVE": "",
+        "button_5": "FILTERWHEEL_PREV",             // LT button
+        "button_6": "FILTERWHEEL_NEXT",             // RT button
+        "button_7": "",                             // LB button
+        "button_8": "",                             // RB button
+        "button_9": "CAA_ROTATE_ABORT",             // Left Stick button
+        "button_10": "MOUNT_STOP",                  // Right Stick button
+        "button_11": "",
+        "button_12": "",
+        "axis_1": {                                 // Left Stick Horizontal
+          "NEGATIVE": "MOUNT_STEP_DOWN",
           "CENTER": "",
-          "POSITIVE": ""
+          "POSITIVE": "MOUNT_STEP_UP"
         },
-        "axis_2": {
-          "NEGATIVE": "",
+        "axis_2": {                                // Left Stick Vertical
+          "NEGATIVE": "FOCUS_STEP_UP",
           "CENTER": "",
-          "POSITIVE": ""
+          "POSITIVE": "FOCUS_STEP_DOWN"
         },
-        "axis_3": {
-          "NEGATIVE": "",
-          "CENTER": "",
-          "POSITIVE": ""
-        },
-        "axis_4": {
+        "axis_3": {                                 // Right Stick Horizontal
           "NEGATIVE": "SKYMAP_ROTATE_DOWN",
           "CENTER": "",
           "POSITIVE": "SKYMAP_ROTATE_UP"
         },
-        "axis_5": {
-          "NEGATIVE": "SKYMAP_ZOOM_OUT",
+        "axis_4": {                                 // Right Stick Horizontal(duplicate for Right Stick Horizontal)
+          "NEGATIVE": "",
           "CENTER": "",
-          "POSITIVE": "SKYMAP_ZOOM_IN"
+          "POSITIVE": ""
+        },
+        "axis_5": {                                 // Right Stick Vertical
+          "NEGATIVE": "SKYMAP_ZOOM_IN",
+          "CENTER": "",
+          "POSITIVE": "SKYMAP_ZOOM_OUT"
         }
       }
     },
@@ -114,18 +114,18 @@
       "label": "8BitDo Zero 2 - X-input",
       "description": "The Zero 2 controller by 8BitDo. Settings for use in X-Input mode.",
       "action_mapping": {
-        "dpad_up": "",
-        "dpad_down": "",
-        "dpad_left": "",
-        "dpad_right": "",
-        "button_1": "CAA_ROTATE_COUNTER_CLOCKWISE",
-        "button_2": "CAA_ROTATE_CLOCKWISE",
-        "button_3": "FOCUS_STEP_DOWN",
-        "button_4": "FOCUS_STEP_UP",
-        "button_5": "MOUNT_STEP_UP",
-        "button_6": "MOUNT_STEP_DOWN",
-        "button_7": "FOCUS_IN",
-        "button_8": "FOCUS_OUT",
+        "dpad_up": "",                              // Cannot be assigned
+        "dpad_down": "",                            // Cannot be assigned
+        "dpad_left": "",                            // Cannot be assigned
+        "dpad_right": "",                           // Cannot be assigned
+        "button_1": "CAA_ROTATE_COUNTER_CLOCKWISE", // B button
+        "button_2": "CAA_ROTATE_CLOCKWISE",         // A button
+        "button_3": "FOCUS_IN",                     // Y button
+        "button_4": "FOCUS_OUT",                    // X button
+        "button_5": "MOUNT_STEP_DOWN",              // L button
+        "button_6": "MOUNT_STEP_UP",                // R button
+        "button_7": "FOCUS_STEP_DOWN",              // select button
+        "button_8": "FOCUS_STEP_UP",                // start button
         "button_9": "",
         "button_10": "",
         "button_11": "",
@@ -134,12 +134,12 @@
         "button_14": "",
         "button_15": "",
         "button_16": "",
-        "axis_1": {
+        "axis_1": {                                 // Left Stick Horizontal
           "NEGATIVE": "MOUNT_WEST",
           "CENTER": "",
           "POSITIVE": "MOUNT_EAST"
         },
-        "axis_2": {
+        "axis_2": {                                 // Left Stick Vertical
           "NEGATIVE": "MOUNT_NORTH",
           "CENTER": "",
           "POSITIVE": "MOUNT_SOUTH"
@@ -176,35 +176,41 @@
         "dpad_down": "MOUNT_SOUTH",
         "dpad_left": "MOUNT_WEST",
         "dpad_right": "MOUNT_EAST",
-        "button_1": "FOCUS_STEP_UP",
-        "button_2": "FOCUS_STEP_DOWN",
-        "button_3": "CAA_ROTATE_COUNTER_CLOCKWISE",
-        "button_4": "CAA_ROTATE_CLOCKWISE",
-        "button_5": "MOUNT_STEP_UP",
-        "button_6": "FOCUS_IN",
-        "button_7": "MOUNT_STEP_DOWN",
-        "button_8": "FOCUS_OUT",
-        "button_9": "MOUNT_STOP",
-        "button_10": "FOCUS_STOP",
+        "button_1": "CAA_ROTATE_COUNTER_CLOCKWISE",
+        "button_2": "CAA_ROTATE_CLOCKWISE",
+        "button_3": "FOCUS_IN",
+        "button_4": "FOCUS_OUT",
+        "button_5": "FILTERWHEEL_PREV",
+        "button_6": "FILTERWHEEL_NEXT",
+        "button_7": "CAA_ROTATE_ABORT",
+        "button_8": "MOUNT_STOP",
+        "button_9": "",
+        "button_10": "",
+        "button_11": "",
+        "button_12": "",
+        "button_13": "",
+        "button_14": "",
+        "button_15": "",
+        "button_16": "",
         "axis_1": {
-          "NEGATIVE": "",
+          "NEGATIVE": "MOUNT_STEP_DOWN",
           "CENTER": "",
-          "POSITIVE": ""
+          "POSITIVE": "MOUNT_STEP_UP"
         },
         "axis_2": {
-          "NEGATIVE": "",
+          "NEGATIVE": "FOCUS_STEP_UP",
           "CENTER": "",
-          "POSITIVE": ""
+          "POSITIVE": "FOCUS_STEP_DOWN"
         },
         "axis_3": {
-          "NEGATIVE": "",
+          "NEGATIVE": "SKYMAP_ROTATE_DOWN",
           "CENTER": "",
-          "POSITIVE": ""
+          "POSITIVE": "SKYMAP_ROTATE_UP"
         },
         "axis_4": {
-          "NEGATIVE": "",
+          "NEGATIVE": "SKYMAP_ZOOM_IN",
           "CENTER": "",
-          "POSITIVE": ""
+          "POSITIVE": "SKYMAP_ZOOM_OUT"
         },
         "axis_5": {
           "NEGATIVE": "",
