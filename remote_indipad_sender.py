@@ -94,12 +94,14 @@ AVAILABLE_ACTIONS = [
     "FILTERWHEEL_NEXT",
     "CAA_ROTATE_COUNTER_CLOCKWISE",
     "CAA_ROTATE_CLOCKWISE",
+    "CAA_ROTATE_ABORT",
     "SKYMAP_MOVE",
     "SKYMAP_ZOOM_IN",
     "SKYMAP_ZOOM_OUT",
     "SKYMAP_ROTATE_UP",
     "SKYMAP_ROTATE_DOWN",
 ]
+MAPPING_EDITOR_ACTIONS = [action for action in AVAILABLE_ACTIONS if action != "FOCUS_STOP"]
 AXIS_STATE_NAMES = {-1: "NEGATIVE", 0: "CENTER", 1: "POSITIVE"}
 AXIS_STATES = ("NEGATIVE", "CENTER", "POSITIVE")
 
@@ -1959,7 +1961,7 @@ class MappingEditorWindow(QMainWindow):
                 axis_mapping = self.mapping.get(key, {}) if isinstance(self.mapping.get(key, {}), dict) else {}
                 for state_name, state_value in zip(AXIS_STATES, (-1, 0, 1)):
                     box = QComboBox()
-                    box.addItems(["Unassigned"] + AVAILABLE_ACTIONS[1:])
+                    box.addItems(["Unassigned"] + MAPPING_EDITOR_ACTIONS[1:])
                     current_value = str(axis_mapping.get(state_name, "") or "")
                     match_index = 0
                     for index in range(box.count()):
@@ -1975,7 +1977,7 @@ class MappingEditorWindow(QMainWindow):
                 continue
 
             box = QComboBox()
-            box.addItems(["Unassigned"] + AVAILABLE_ACTIONS[1:])
+            box.addItems(["Unassigned"] + MAPPING_EDITOR_ACTIONS[1:])
             current_value = self.mapping.get(key, "")
             match_index = 0
             for index in range(box.count()):
@@ -2075,14 +2077,14 @@ class MappingEditorWindow(QMainWindow):
                 current_map = self.mapping.get(key, {}) if isinstance(self.mapping.get(key, {}), dict) else {}
                 for state_name, state_combo in combo.items():
                     value = current_map.get(state_name, "")
-                    if value and value in [item for item in AVAILABLE_ACTIONS if item]:
+                    if value and value in MAPPING_EDITOR_ACTIONS[1:]:
                         state_combo.setCurrentText(value)
                     else:
                         state_combo.setCurrentIndex(0)
                 continue
 
             value = self.mapping.get(key, "")
-            if value and value in [item for item in AVAILABLE_ACTIONS if item]:
+            if value and value in MAPPING_EDITOR_ACTIONS[1:]:
                 combo.setCurrentText(value)
             else:
                 combo.setCurrentIndex(0)
@@ -2100,7 +2102,7 @@ class MappingEditorWindow(QMainWindow):
                         next_mapping[key][state_name] = value
                 continue
             value = combo.currentText().strip()
-            if value == "Unassigned":
+            if value in {"Unassigned", "FOCUS_STOP"}:
                 next_mapping[key] = ""
                 continue
             if value:

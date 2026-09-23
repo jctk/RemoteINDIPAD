@@ -261,6 +261,7 @@ $ source venv/bin/activate
 | フィルターホイール | FILTERWHEEL_NEXT | フィルターホイールのスロット番号を一つ増やす | ボタン12 |
 | ローテーター | CAA_ROTATE_COUNTER_CLOCKWISE | ローテーター反時計回り（角度減少方向の回転）。ボタンダウンまたはアップでCAA_ROTATE_COUNTER_CLOCKWISEを送信 | ボタン3 |
 | ローテーター | CAA_ROTATE_CLOCKWISE | ローテーター時計回り（角度増加方向の回転）ボタンダウンまたはアップCAA_ROTATE_CLOCKWISEを送信 | ボタン4 |
+| ローテーター | CAA_ROTATE_ABORT | ローテーターの回転停止 | ボタン4 |
 | KStars SkyMap | SKYMAP_UP / SKYMAP_DOWN | SkyMap の移動 | 左スティック（上下で画面に対して上下の移動） |
 | KStars SkyMap | SKYMAP_LEFT / SKYMAN_RIGHT | SkyMap の移動 | 左スティック（左右で画面に対して左右の移動） |
 | KStars SkyMap | SKYMAP_ZOOM_IN / SKYMAP_ZOOM_OUT | SkyMap のZoom In/Out | 右スティック（上下） |

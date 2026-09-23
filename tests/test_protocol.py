@@ -102,6 +102,10 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("FILTERWHEEL_PREV", sender.AVAILABLE_ACTIONS)
         self.assertIn("FILTERWHEEL_NEXT", sender.AVAILABLE_ACTIONS)
 
+    def test_mapping_editor_includes_rotator_abort(self):
+        self.assertIn("CAA_ROTATE_ABORT", sender.AVAILABLE_ACTIONS)
+        self.assertIn("CAA_ROTATE_ABORT", sender.MAPPING_EDITOR_ACTIONS)
+
     def test_filterwheel_wraps_at_slot_boundaries(self):
         shared_interface = type("SharedInterface", (), {})()
         shared_interface.slot_count = 5
@@ -339,6 +343,25 @@ class ProtocolTests(unittest.TestCase):
 
         self.assertFalse(window.closed)
         self.assertEqual(emitted["mapping"]["axis_1"], "SKYMAP_MOVE")
+
+    def test_mapping_editor_excludes_focus_stop(self):
+        self.assertNotIn("FOCUS_STOP", sender.MAPPING_EDITOR_ACTIONS)
+
+        window = sender.MappingEditorWindow.__new__(sender.MappingEditorWindow)
+        window.input_rows = {
+            "button_1": type("FakeCombo", (), {"currentText": lambda self: "FOCUS_STOP"})(),
+        }
+        window.mapping = {}
+
+        class FakeSignal:
+            def emit(self, value):
+                self.mapping = value
+
+        signal = FakeSignal()
+        window.mapping_applied = signal
+        window.apply_mapping()
+
+        self.assertEqual(signal.mapping["button_1"], "")
 
     def test_gui_settings_round_trip_includes_focus_step(self):
         settings = {
@@ -965,6 +988,26 @@ class ProtocolTests(unittest.TestCase):
         )
         self.assertIn({"action": "MOUNT_SOUTH", "pressed": False, "source": "dpad"}, mapping)
         self.assertNotIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
+
+    def test_rotator_abort_mapping_emits_for_button_dpad_and_axis(self):
+        button_events = sender.build_action_events(
+            buttons={"button_1": True},
+            action_map={"button_1": "CAA_ROTATE_ABORT"},
+        )
+        self.assertIn({"action": "CAA_ROTATE_ABORT", "pressed": True, "source": "button"}, button_events)
+
+        dpad_events = sender.build_action_events(
+            dpad={"dpad_up": True},
+            action_map={"dpad_up": "CAA_ROTATE_ABORT"},
+        )
+        self.assertIn({"action": "CAA_ROTATE_ABORT", "pressed": True, "source": "dpad"}, dpad_events)
+
+        axis_events = sender.build_action_events(
+            axes={"axis_1": 1.0},
+            previous_axes={"axis_1": 0.0},
+            action_map={"axis_1": {"NEGATIVE": "", "CENTER": "", "POSITIVE": "CAA_ROTATE_ABORT"}},
+        )
+        self.assertIn({"action": "CAA_ROTATE_ABORT", "pressed": True, "source": "axis"}, axis_events)
 
     def test_dpad_stop_is_emitted_only_after_all_directions_are_released(self):
         mapping = sender.build_action_events(
