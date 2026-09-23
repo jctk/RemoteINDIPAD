@@ -239,6 +239,21 @@ $ source venv/bin/activate
 - Mapping Editor には Reset to default ボタンを設け、既定の 7.1 設定へ戻せる。
 - マッピングは設定ファイルの action_mapping に保存され、次回起動時に復元する。
 
+### 操作マッピングの優先順位
+
+1. remote_indipad_sender.json
+   controllers[].name + controllers[].guid が一致
+
+2. gamepad_profiles.json
+   profiles[GAMEPAD名] が名称一致
+
+3. gamepad_profiles.json
+   default_device で指定されたプロファイル
+
+4. gamepad_profiles.json
+   profiles["default"]
+
+
 ### 7.1 抽象化操作名とデフォルトマッピング
 
 - ELECOM JC-U3712T でのデフォルトのマッピングは下表の通り。

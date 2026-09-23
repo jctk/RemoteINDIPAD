@@ -96,15 +96,14 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn('"left_x":-0.25', rendered)
         self.assertIn('"button_1":false', rendered)
 
-    def test_default_sender_mapping_includes_filterwheel_actions(self):
-        self.assertEqual(sender.DEFAULT_ACTION_MAPPING.get("button_11"), "FILTERWHEEL_PREV")
-        self.assertEqual(sender.DEFAULT_ACTION_MAPPING.get("button_12"), "FILTERWHEEL_NEXT")
+    def test_available_actions_include_filterwheel_actions(self):
         self.assertIn("FILTERWHEEL_PREV", sender.AVAILABLE_ACTIONS)
         self.assertIn("FILTERWHEEL_NEXT", sender.AVAILABLE_ACTIONS)
 
     def test_mapping_editor_includes_rotator_abort(self):
         self.assertIn("CAA_ROTATE_ABORT", sender.AVAILABLE_ACTIONS)
         self.assertIn("CAA_ROTATE_ABORT", sender.MAPPING_EDITOR_ACTIONS)
+        self.assertNotIn("SKYMAP_MOVE", sender.MAPPING_EDITOR_ACTIONS)
 
     def test_filterwheel_wraps_at_slot_boundaries(self):
         shared_interface = type("SharedInterface", (), {})()
@@ -170,13 +169,24 @@ class ProtocolTests(unittest.TestCase):
 
     def test_empty_string_mapping_is_preserved(self):
         resolved = sender._resolve_flat_action_mapping({"axis_4": ""})
-        self.assertEqual(resolved["axis_4"], "")
+        self.assertEqual(resolved["axis_4"], {"NEGATIVE": "", "CENTER": "", "POSITIVE": ""})
+
+    def test_missing_and_unknown_mapping_values_are_unassigned(self):
+        resolved = sender._resolve_flat_action_mapping({
+            "button_1": "NOT_AN_ACTION",
+            "axis_1": "SKYMAP_MOVE",
+            "axis_2": {"NEGATIVE": "NOT_AN_ACTION", "POSITIVE": "MOUNT_NORTH"},
+        })
+        self.assertEqual(resolved["button_1"], "")
+        self.assertEqual(resolved["axis_1"], {"NEGATIVE": "", "CENTER": "", "POSITIVE": ""})
+        self.assertEqual(resolved["axis_2"], {"NEGATIVE": "", "CENTER": "", "POSITIVE": "MOUNT_NORTH"})
 
     def test_action_mapping_sorts_all_buttons_before_axes(self):
         resolved = sender._resolve_flat_action_mapping({
             "axis_1": "SKYMAP_MOVE",
             "button_16": "",
             "button_13": "",
+            "button_12": "FILTERWHEEL_NEXT",
         })
         keys = list(resolved)
         self.assertLess(keys.index("button_12"), keys.index("button_13"))
@@ -188,13 +198,13 @@ class ProtocolTests(unittest.TestCase):
                 {
                     "name": "JC-U3712T",
                     "guid": "abc",
-                    "mapping": {"axis_1": "SKYMAP_MOVE", "axis_2": "SKYMAP_MOVE"},
+                    "mapping": {"axis_1": {"POSITIVE": "SKYMAP_MOVE"}, "axis_2": {"POSITIVE": "SKYMAP_MOVE"}},
                 }
             ]
         }, controller_name="JC-U3712T", controller_guid="abc")
         self.assertNotIn("default", normalized)
         self.assertIn("controllers", normalized)
-        self.assertEqual(normalized["controllers"][0]["mapping"]["axis_1"], "SKYMAP_MOVE")
+        self.assertEqual(normalized["controllers"][0]["mapping"]["axis_1"]["POSITIVE"], "SKYMAP_MOVE")
 
     def test_gamepad_input_rows_follow_detected_axis_count(self):
         class FakeJoy:
@@ -279,7 +289,10 @@ class ProtocolTests(unittest.TestCase):
         window._apply_mapping({"axis_1": "SKYMAP_MOVE", "axis_2": "SKYMAP_MOVE", "axis_3": "SKYMAP_ROTATE", "axis_4": "", "axis_5": "SKYMAP_ZOOM", "axis_6": ""})
 
         self.assertEqual(len(window.gui_settings["action_mapping"]["controllers"]), 2)
-        self.assertEqual(window.gui_settings["action_mapping"]["controllers"][0]["mapping"]["axis_4"], "")
+        self.assertEqual(
+            window.gui_settings["action_mapping"]["controllers"][0]["mapping"]["axis_4"],
+            {"NEGATIVE": "", "CENTER": "", "POSITIVE": ""},
+        )
 
     def test_controller_change_reconnects_an_active_worker(self):
         class FakeWorker:
@@ -325,7 +338,11 @@ class ProtocolTests(unittest.TestCase):
     def test_mapping_editor_save_keeps_window_open(self):
         window = sender.MappingEditorWindow.__new__(sender.MappingEditorWindow)
         window.input_rows = {
-            "axis_1": type("FakeCombo", (), {"currentText": lambda self: "SKYMAP_MOVE"})(),
+            "axis_1": {
+                "NEGATIVE": type("FakeCombo", (), {"currentText": lambda self: "Unassigned"})(),
+                "CENTER": type("FakeCombo", (), {"currentText": lambda self: "Unassigned"})(),
+                "POSITIVE": type("FakeCombo", (), {"currentText": lambda self: "SKYMAP_MOVE"})(),
+            },
             "button_1": type("FakeCombo", (), {"currentText": lambda self: "Unassigned"})(),
         }
         window.mapping = {}
@@ -342,7 +359,7 @@ class ProtocolTests(unittest.TestCase):
         window.apply_mapping()
 
         self.assertFalse(window.closed)
-        self.assertEqual(emitted["mapping"]["axis_1"], "SKYMAP_MOVE")
+        self.assertEqual(emitted["mapping"]["axis_1"]["POSITIVE"], "SKYMAP_MOVE")
 
     def test_mapping_editor_excludes_focus_stop(self):
         self.assertNotIn("FOCUS_STOP", sender.MAPPING_EDITOR_ACTIONS)
@@ -978,13 +995,15 @@ class ProtocolTests(unittest.TestCase):
         self.assertFalse(defaults["heartbeat"])
 
     def test_dpad_to_abstract_action_mapping(self):
-        mapping = sender.build_action_events({"dpad_up": False, "dpad_left": False, "dpad_right": False, "dpad_down": True}, {})
+        action_map = {"dpad_down": "MOUNT_SOUTH"}
+        mapping = sender.build_action_events({"dpad_up": False, "dpad_left": False, "dpad_right": False, "dpad_down": True}, {}, action_map=action_map)
         self.assertIn({"action": "MOUNT_SOUTH", "pressed": True, "source": "dpad"}, mapping)
 
         mapping = sender.build_action_events(
             {"dpad_up": False, "dpad_left": False, "dpad_right": False, "dpad_down": False},
             {},
             previous_dpad={"dpad_down": True},
+            action_map=action_map,
         )
         self.assertIn({"action": "MOUNT_SOUTH", "pressed": False, "source": "dpad"}, mapping)
         self.assertNotIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
@@ -1014,6 +1033,7 @@ class ProtocolTests(unittest.TestCase):
             {"dpad_up": False, "dpad_left": True, "dpad_right": False, "dpad_down": False},
             {},
             previous_dpad={"dpad_up": True, "dpad_left": False, "dpad_right": False, "dpad_down": False},
+            action_map={"dpad_up": "MOUNT_NORTH", "dpad_left": "MOUNT_WEST"},
         )
         self.assertNotIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
         self.assertIn({"action": "MOUNT_NORTH", "pressed": False, "source": "dpad"}, mapping)
@@ -1023,6 +1043,7 @@ class ProtocolTests(unittest.TestCase):
             {"dpad_up": False, "dpad_left": False, "dpad_right": False, "dpad_down": False},
             {},
             previous_dpad={"dpad_up": False, "dpad_left": True, "dpad_right": False, "dpad_down": False},
+            action_map={"dpad_left": "MOUNT_WEST"},
         )
         self.assertIn({"action": "MOUNT_WEST", "pressed": False, "source": "dpad"}, mapping)
         self.assertNotIn({"action": "MOUNT_STOP", "pressed": False, "source": "dpad"}, mapping)
@@ -1041,6 +1062,18 @@ class ProtocolTests(unittest.TestCase):
                 "button_2": True,
                 "button_3": True,
                 "button_4": True,
+            },
+            action_map={
+                "button_1": "CAA_ROTATE_COUNTER_CLOCKWISE",
+                "button_2": "CAA_ROTATE_CLOCKWISE",
+                "button_3": "FOCUS_STEP_UP",
+                "button_4": "FOCUS_STEP_DOWN",
+                "button_5": "MOUNT_STEP_UP",
+                "button_6": "FOCUS_IN",
+                "button_7": "MOUNT_STEP_DOWN",
+                "button_8": "FOCUS_OUT",
+                "button_9": "MOUNT_STOP",
+                "button_10": "FOCUS_STOP",
             },
         )
 
@@ -1065,18 +1098,18 @@ class ProtocolTests(unittest.TestCase):
             "port": 50007,
             "heartbeat": False,
             "action_mapping": {
-                "dpad_down": "CUSTOM_NORTH",
-                "button_6": "CUSTOM_FOCUS_IN",
+                "dpad_down": "MOUNT_NORTH",
+                "button_6": "FOCUS_IN",
             },
         }
 
         resolved = sender.resolve_action_mapping(settings)
-        self.assertEqual(resolved["dpad_down"], "CUSTOM_NORTH")
-        self.assertEqual(resolved["button_6"], "CUSTOM_FOCUS_IN")
-        self.assertEqual(resolved["dpad_up"], "MOUNT_NORTH")
+        self.assertEqual(resolved["dpad_down"], "MOUNT_NORTH")
+        self.assertEqual(resolved["button_6"], "FOCUS_IN")
+        self.assertNotIn("dpad_up", resolved)
 
         mapping = sender.build_action_events({"dpad_down": True}, {}, action_map=resolved)
-        self.assertIn({"action": "CUSTOM_NORTH", "pressed": True, "source": "dpad"}, mapping)
+        self.assertIn({"action": "MOUNT_NORTH", "pressed": True, "source": "dpad"}, mapping)
 
     def test_action_mapping_uses_guid_and_name_to_select_controller_profile(self):
         settings = {
@@ -1085,15 +1118,15 @@ class ProtocolTests(unittest.TestCase):
             "action_mapping": {
                 "default": {"dpad_down": "MOUNT_NORTH", "button_1": "FOCUS_STEP_UP"},
                 "controllers": [
-                    {"name": "JC-U3712T", "guid": "guid-1", "mapping": {"dpad_down": "CUSTOM_NORTH", "button_1": "CUSTOM_FOCUS_UP"}},
+                    {"name": "JC-U3712T", "guid": "guid-1", "mapping": {"dpad_down": "MOUNT_NORTH", "button_1": "FOCUS_IN"}},
                     {"name": "Xbox Controller", "guid": "guid-2", "mapping": {"dpad_down": "MOUNT_EAST", "button_1": "FOCUS_IN"}},
                 ],
             },
         }
 
         resolved = sender.resolve_action_mapping(settings, device_name="JC-U3712T", device_guid="guid-1")
-        self.assertEqual(resolved["dpad_down"], "CUSTOM_NORTH")
-        self.assertEqual(resolved["button_1"], "CUSTOM_FOCUS_UP")
+        self.assertEqual(resolved["dpad_down"], "MOUNT_NORTH")
+        self.assertEqual(resolved["button_1"], "FOCUS_IN")
 
         default_for_other = sender.resolve_action_mapping(settings, device_name="Xbox Controller", device_guid="guid-2")
         self.assertEqual(default_for_other["dpad_down"], "MOUNT_EAST")

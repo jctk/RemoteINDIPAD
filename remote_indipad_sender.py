@@ -52,30 +52,6 @@ PORT = 50007
 DEADZONE = 0.08
 _MODULE_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
 GUI_SETTINGS_PATH = _MODULE_DIR / "remote_indipad_sender.json"
-DEFAULT_ACTION_MAPPING = {
-    "dpad_up": "MOUNT_NORTH",
-    "dpad_down": "MOUNT_SOUTH",
-    "dpad_left": "MOUNT_WEST",
-    "dpad_right": "MOUNT_EAST",
-    "button_1": "FOCUS_STEP_UP",
-    "button_2": "FOCUS_STEP_DOWN",
-    "button_3": "CAA_ROTATE_COUNTER_CLOCKWISE",
-    "button_4": "CAA_ROTATE_CLOCKWISE",
-    "button_5": "MOUNT_STEP_UP",
-    "button_6": "FOCUS_IN",
-    "button_7": "MOUNT_STEP_DOWN",
-    "button_8": "FOCUS_OUT",
-    "button_9": "MOUNT_STOP",
-    "button_10": "FOCUS_STOP",
-    "button_11": "FILTERWHEEL_PREV",
-    "button_12": "FILTERWHEEL_NEXT",
-    "axis_1": "SKYMAP_MOVE",
-    "axis_2": "SKYMAP_MOVE",
-    "axis_3": "SKYMAP_ROTATE",
-    "axis_4": "SKYMAP_ZOOM",
-    "axis_5": "",
-    "axis_6": "",
-}
 AVAILABLE_ACTIONS = [
     "",
     "MOUNT_NORTH",
@@ -101,7 +77,7 @@ AVAILABLE_ACTIONS = [
     "SKYMAP_ROTATE_UP",
     "SKYMAP_ROTATE_DOWN",
 ]
-MAPPING_EDITOR_ACTIONS = [action for action in AVAILABLE_ACTIONS if action != "FOCUS_STOP"]
+MAPPING_EDITOR_ACTIONS = [action for action in AVAILABLE_ACTIONS if action not in {"FOCUS_STOP", "SKYMAP_MOVE"}]
 AXIS_STATE_NAMES = {-1: "NEGATIVE", 0: "CENTER", 1: "POSITIVE"}
 AXIS_STATES = ("NEGATIVE", "CENTER", "POSITIVE")
 
@@ -128,7 +104,7 @@ def _action_mapping_sort_key(item):
 
 
 def _resolve_flat_action_mapping(mapping: dict | None):
-    resolved = DEFAULT_ACTION_MAPPING.copy()
+    resolved = {}
     if not isinstance(mapping, dict):
         return resolved
 
@@ -137,16 +113,16 @@ def _resolve_flat_action_mapping(mapping: dict | None):
             continue
         if not (key.startswith("dpad_") or key.startswith("button_") or key.startswith("axis_")):
             continue
-        if key.startswith("axis_") and isinstance(value, dict):
-            resolved[key] = _axis_state_mapping_for_value(value)
+        if key.startswith("axis_"):
+            if isinstance(value, dict):
+                resolved[key] = _axis_state_mapping_for_value(value)
+            else:
+                resolved[key] = _axis_state_mapping_for_value(None)
             continue
         if not isinstance(value, str):
             continue
-        resolved[key] = value.strip()
-
-    for key, value in DEFAULT_ACTION_MAPPING.items():
-        if key not in resolved:
-            resolved[key] = value
+        action = value.strip()
+        resolved[key] = action if action in AVAILABLE_ACTIONS else ""
 
     return dict(sorted(resolved.items(), key=_action_mapping_sort_key))
 
@@ -227,9 +203,9 @@ def _normalize_action_mapping_store(raw_mapping, controller_name: str | None = N
 
 
 def resolve_action_mapping(source: dict | None = None, device_name: str | None = None, device_guid: str | None = None):
-    resolved = DEFAULT_ACTION_MAPPING.copy()
+    resolved = {}
     if not isinstance(source, dict):
-        return resolved
+        return get_default_action_mapping(device_name, load_axis_config())
 
     candidate = source.get("action_mapping") if isinstance(source.get("action_mapping"), dict) else source
     if not isinstance(candidate, dict):
@@ -302,7 +278,7 @@ def get_default_action_mapping(device_name: str | None = None, config: dict | No
         if isinstance(mapping, dict):
             return resolve_action_mapping(mapping)
 
-    return DEFAULT_ACTION_MAPPING.copy()
+    return {}
 
 
 def get_gamepad_input_rows(selected_device: str | None = None):
@@ -658,13 +634,9 @@ def _axis_state_mapping_for_value(value):
         normalized = {}
         for state_name in AXIS_STATES:
             action = value.get(state_name, "")
-            if isinstance(action, str):
-                normalized[state_name] = action.strip()
-            else:
-                normalized[state_name] = ""
+            action = action.strip() if isinstance(action, str) else ""
+            normalized[state_name] = action if action in AVAILABLE_ACTIONS else ""
         return normalized
-    if isinstance(value, str):
-        return {"NEGATIVE": "", "CENTER": "", "POSITIVE": value.strip()}
     return {"NEGATIVE": "", "CENTER": "", "POSITIVE": ""}
 
 
@@ -754,7 +726,7 @@ def build_action_events(
         current_pressed = bool(dpad.get(name))
         previous_pressed = bool(previous_dpad.get(name))
         if current_pressed != previous_pressed:
-            action_name = resolved_map.get(name, DEFAULT_ACTION_MAPPING.get(name, name))
+            action_name = resolved_map.get(name, "")
             if action_name:
                 events.append({"action": action_name, "pressed": current_pressed, "source": "dpad"})
 
@@ -1037,17 +1009,24 @@ def demo_buttons(step: int):
 
 def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: bool = False, forced_device: str | None = None, action_map: dict | None = None, deadzone: float = DEADZONE):
     joy = None
-    resolved_action_map = resolve_action_mapping(action_map)
+    resolved_action_map = None
     if demo:
         print("[sender] demo mode enabled", flush=True)
+        resolved_action_map = resolve_action_mapping(action_map)
     else:
         try:
             joy = init_gamepad(forced_device)
             gamepad_name = get_gamepad_name(joy)
+            resolved_action_map = resolve_action_mapping(
+                action_map,
+                device_name=gamepad_name,
+                device_guid=get_device_guid(joy),
+            )
             print(f"[sender] connected gamepad: {gamepad_name}", flush=True)
         except RuntimeError as exc:
             print(f"[sender] no gamepad available: {exc}; switching to demo mode", flush=True)
             demo = True
+            resolved_action_map = resolve_action_mapping(action_map)
 
     if forced_device:
         print(f"[sender] forced device profile: {forced_device}", flush=True)
@@ -1528,7 +1507,7 @@ class IndipadWindow(QMainWindow):
             "heartbeat": self.heartbeat_checkbox.isChecked(),
             "focus_step": self.focus_step_spin.value(),
             "deadzone": self.gui_settings.get("deadzone", DEADZONE),
-            "action_mapping": self.gui_settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy()),
+            "action_mapping": self.gui_settings.get("action_mapping", {"controllers": []}),
             "window_geometry": {
                 "x": self.x(),
                 "y": self.y(),
@@ -1718,7 +1697,7 @@ class IndipadWindow(QMainWindow):
 
         editor = MappingEditorWindow(
             self,
-            mapping=self.gui_settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy()),
+            mapping=self.gui_settings.get("action_mapping", {"controllers": []}),
             selected_device=self.controller_combo.currentText(),
         )
         editor.mapping_applied.connect(self._apply_mapping)
@@ -1849,7 +1828,7 @@ class IndipadWindow(QMainWindow):
             "action_mapping": self.gui_settings.get("action_mapping", {"controllers": []}),
         }
         self.gui_settings["action_mapping"] = _normalize_action_mapping_store(
-            self.gui_settings.get("action_mapping", DEFAULT_ACTION_MAPPING.copy()),
+            self.gui_settings.get("action_mapping", {"controllers": []}),
             controller_name=device_name or "",
             controller_guid=controller_guid,
         )

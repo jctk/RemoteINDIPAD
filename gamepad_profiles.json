@@ -28,9 +28,9 @@
         "button_15": "",
         "button_16": "",
         "axis_1": {
-          "NEGATIVE": "MOUNT_STEP_UP",
+          "NEGATIVE": "MOUNT_STEP_DOWN",
           "CENTER": "",
-          "POSITIVE": "MOUNT_STEP_DOWN"
+          "POSITIVE": "MOUNT_STEP_UP"
         },
         "axis_2": {
           "NEGATIVE": "FOCUS_STEP_UP",
