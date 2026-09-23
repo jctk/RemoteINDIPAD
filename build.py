@@ -10,6 +10,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tarfile
 import zipfile
 from pathlib import Path
 
@@ -24,7 +25,7 @@ EXTRA_DATA_FILES = {
     "remote_indipad_sender.py": ["gamepad_profiles.json"],
 }
 
-# 実行環境ごとの出力先ディレクトリ名・アイコン・配布用 zip のベース名の対応。
+# 実行環境ごとの出力先ディレクトリ名・アイコン・配布用アーカイブの設定。
 PLATFORM_SETTINGS = {
     "windows-x64": {
         "release_dir": "windows-x64",
@@ -32,12 +33,14 @@ PLATFORM_SETTINGS = {
         "icon": None,
         "exe_suffix": ".exe",
         "archive_name": "RemoteINDIPAD-windows-x64",
+        "archive_format": "zip",
     },
     "linux-aarch64": {
         "release_dir": "linux-aarch64",
         "icon": None,
         "exe_suffix": "",
         "archive_name": "RemoteINDIPAD-linux-aarch64",
+        "archive_format": "tar.gz",
     },
 }
 
@@ -115,8 +118,13 @@ def copy_extra_data_files(script_name: str, release_dir: str) -> None:
         print(f"{filename} をコピーしました: {dst}")
 
 
-def create_release_archive(release_dir: str, exe_suffix: str, archive_name: str) -> bool:
-    """実行ファイルと追加データファイルを zip にまとめ、SHA256 ハッシュを保存する。"""
+def create_release_archive(
+    release_dir: str,
+    exe_suffix: str,
+    archive_name: str,
+    archive_format: str,
+) -> bool:
+    """実行ファイルと追加データファイルをアーカイブにまとめ、SHA256 を保存する。"""
     output_dir = ROOT_DIR / "release" / release_dir
 
     files_to_archive = []
@@ -133,21 +141,29 @@ def create_release_archive(release_dir: str, exe_suffix: str, archive_name: str)
         if data_path.exists():
             files_to_archive.append(data_path)
 
-    zip_path = output_dir / f"{archive_name}.zip"
+    archive_path = output_dir / f"{archive_name}.{archive_format}"
     hash_path = output_dir / f"{archive_name}.txt"
 
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        for file_path in files_to_archive:
-            archive.write(file_path, arcname=file_path.name)
+    if archive_format == "zip":
+        with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            for file_path in files_to_archive:
+                archive.write(file_path, arcname=file_path.name)
+    elif archive_format == "tar.gz":
+        with tarfile.open(archive_path, "w:gz") as archive:
+            for file_path in files_to_archive:
+                archive.add(file_path, arcname=file_path.name)
+    else:
+        print(f"エラー: 未対応のアーカイブ形式です: {archive_format}", file=sys.stderr)
+        return False
 
     sha256 = hashlib.sha256()
-    with open(zip_path, "rb") as handle:
+    with open(archive_path, "rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             sha256.update(chunk)
 
-    hash_path.write_text(f"{sha256.hexdigest()}  {zip_path.name}\n", encoding="utf-8")
+    hash_path.write_text(f"{sha256.hexdigest()}  {archive_path.name}\n", encoding="utf-8")
 
-    print(f"zip を作成しました: {zip_path}")
+    print(f"{archive_path.name} を作成しました: {archive_path}")
     print(f"SHA256 を保存しました: {hash_path}")
     return True
 
@@ -178,9 +194,14 @@ def main() -> int:
         print(f"失敗したスクリプト: {', '.join(failed_scripts)}", file=sys.stderr)
         return 1
 
-    archive_ok = create_release_archive(release_dir, settings["exe_suffix"], settings["archive_name"])
+    archive_ok = create_release_archive(
+        release_dir,
+        settings["exe_suffix"],
+        settings["archive_name"],
+        settings["archive_format"],
+    )
     if not archive_ok:
-        print("エラー: 配布用 zip の作成に失敗しました。", file=sys.stderr)
+        print("エラー: 配布用アーカイブの作成に失敗しました。", file=sys.stderr)
         return 1
 
     return 0
