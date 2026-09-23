@@ -1270,6 +1270,28 @@ class SenderWorker(QObject):
                 self._socket = None
 
 
+def _clamp_window_position(x: int, y: int, width: int, height: int) -> tuple:
+    """Keep a saved window position on-screen; center it if no screen currently covers it (e.g. monitor layout changed)."""
+    try:
+        screens = QApplication.screens()
+    except Exception:
+        screens = []
+    if not screens:
+        return x, y
+    title_bar_height = 40
+    check_width = max(1, min(width, 200))
+    for screen in screens:
+        avail = screen.availableGeometry()
+        if (avail.left() <= x <= avail.right() - check_width
+                and avail.top() <= y <= avail.bottom() - title_bar_height):
+            return x, y
+    primary = QApplication.primaryScreen() or screens[0]
+    avail = primary.availableGeometry()
+    centered_x = avail.left() + max(0, (avail.width() - width) // 2)
+    centered_y = avail.top() + max(0, (avail.height() - height) // 2)
+    return centered_x, centered_y
+
+
 class IndipadWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1281,7 +1303,10 @@ class IndipadWindow(QMainWindow):
         self.gui_settings = load_gui_settings()
         geometry = self.gui_settings.get("window_geometry", {})
         if all(key in geometry for key in ("x", "y", "width", "height")):
-            self.setGeometry(geometry["x"], geometry["y"], max(300, geometry["width"]), max(240, geometry["height"]))
+            width = max(300, geometry["width"])
+            height = max(240, geometry["height"])
+            x, y = _clamp_window_position(geometry["x"], geometry["y"], width, height)
+            self.setGeometry(x, y, width, height)
 
         # Central widget and main layout
         central = QWidget(self)
