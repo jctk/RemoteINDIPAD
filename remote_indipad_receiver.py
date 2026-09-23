@@ -32,6 +32,7 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
     QApplication = None
 
 
+VERSION = "0.9.0"
 HOST = "0.0.0.0"
 PORT = 50007
 _MODULE_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
@@ -1162,7 +1163,7 @@ class ReceiverWindow(QMainWindow):
         self.console = QTextEdit()
         self.console.setReadOnly(True)
         self.console.setFont(QFont("Consolas", 10))
-        self.console.setPlainText("INDIPAD HOST console\n")
+        self.console.setPlainText(f"INDIPAD HOST console\nINDIPAD HOST Version {VERSION}\n")
         self.clear_console_button = QPushButton("Clear")
         self.clear_console_button.clicked.connect(self.clear_console_log)
         console_button_row = QHBoxLayout()

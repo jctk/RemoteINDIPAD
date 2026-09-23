@@ -47,6 +47,7 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
 import remote_indipad_protocol as protocol
 
 # Configuration and Constants
+VERSION = "0.9.0"
 HOST = "127.0.0.1"
 PORT = 50007
 DEADZONE = 0.08
@@ -1345,7 +1346,7 @@ class IndipadWindow(QMainWindow):
         self.console = QTextEdit()
         self.console.setReadOnly(True)
         self.console.setFont(QFont("Consolas", 10))
-        self.console.setPlainText("INDIPAD console\n")
+        self.console.setPlainText(f"INDIPAD console\nINDIPAD Version {VERSION}\n")
         self.clear_console_button = QPushButton("Clear")
         self.clear_console_button.clicked.connect(self.clear_console_log)
         console_button_row = QHBoxLayout()
