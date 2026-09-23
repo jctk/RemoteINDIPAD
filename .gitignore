@@ -5,6 +5,7 @@ dist/
 *.spec.bak
 release/*/remote_indipad*
 release/*/gamepad_profiles.json
+release/*/RemoteINDIPAD*
 
 # python
 __pycache__/
