@@ -1,9 +1,16 @@
+# PyInstaller
+build/
+dist/
+*.spec.bak
+
+# python
 __pycache__/
 .pytest_cache/
 *.pyc
 .vscoode/
 .venv/
 venv/
+
 temp_work/
 remote_indipad_sender.json
 remote_indipad_receiver.json
