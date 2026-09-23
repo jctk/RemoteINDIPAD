@@ -5,10 +5,12 @@
 一方のビルドが失敗しても、もう一方のビルドは続行する。
 """
 
+import hashlib
 import platform
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -17,16 +19,25 @@ BUILD_DIR = ROOT_DIR / "build"
 # ビルド対象スクリプト一覧。
 SCRIPTS = ["remote_indipad_receiver.py", "remote_indipad_sender.py"]
 
-# 実行環境ごとの出力先ディレクトリ名とアイコンの対応。
+# 実行ファイルと同じ場所に配置する追加データファイル（スクリプトごと）。
+EXTRA_DATA_FILES = {
+    "remote_indipad_sender.py": ["gamepad_profiles.json"],
+}
+
+# 実行環境ごとの出力先ディレクトリ名・アイコン・配布用 zip のベース名の対応。
 PLATFORM_SETTINGS = {
     "windows-x64": {
         "release_dir": "windows-x64",
         # アイコンファイルが用意できたら .ico のパスを設定する。
         "icon": None,
+        "exe_suffix": ".exe",
+        "archive_name": "RemoteINDIPAD-windows-x64",
     },
     "linux-aarch64": {
         "release_dir": "linux-aarch64",
         "icon": None,
+        "exe_suffix": "",
+        "archive_name": "RemoteINDIPAD-linux-aarch64",
     },
 }
 
@@ -85,6 +96,62 @@ def run_pyinstaller(script_name: str, release_dir: str, icon: str | None) -> boo
     return result.returncode == 0
 
 
+def copy_extra_data_files(script_name: str, release_dir: str) -> None:
+    """実行ファイルが実行時に読み込む追加データファイルを release へコピーする。
+
+    既存ファイルは上書きする。
+    """
+    output_dir = ROOT_DIR / "release" / release_dir
+
+    for filename in EXTRA_DATA_FILES.get(script_name, []):
+        src = ROOT_DIR / filename
+        dst = output_dir / filename
+
+        if not src.exists():
+            print(f"警告: {filename} が見つからないためコピーをスキップしました。", file=sys.stderr)
+            continue
+
+        shutil.copy2(src, dst)
+        print(f"{filename} をコピーしました: {dst}")
+
+
+def create_release_archive(release_dir: str, exe_suffix: str, archive_name: str) -> bool:
+    """実行ファイルと追加データファイルを zip にまとめ、SHA256 ハッシュを保存する。"""
+    output_dir = ROOT_DIR / "release" / release_dir
+
+    files_to_archive = []
+    for script_name in SCRIPTS:
+        exe_path = output_dir / f"{Path(script_name).stem}{exe_suffix}"
+        if not exe_path.exists():
+            print(f"エラー: 実行ファイルが見つかりません: {exe_path}", file=sys.stderr)
+            return False
+        files_to_archive.append(exe_path)
+
+    extra_filenames = {filename for filenames in EXTRA_DATA_FILES.values() for filename in filenames}
+    for filename in sorted(extra_filenames):
+        data_path = output_dir / filename
+        if data_path.exists():
+            files_to_archive.append(data_path)
+
+    zip_path = output_dir / f"{archive_name}.zip"
+    hash_path = output_dir / f"{archive_name}.txt"
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for file_path in files_to_archive:
+            archive.write(file_path, arcname=file_path.name)
+
+    sha256 = hashlib.sha256()
+    with open(zip_path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            sha256.update(chunk)
+
+    hash_path.write_text(f"{sha256.hexdigest()}  {zip_path.name}\n", encoding="utf-8")
+
+    print(f"zip を作成しました: {zip_path}")
+    print(f"SHA256 を保存しました: {hash_path}")
+    return True
+
+
 def main() -> int:
     platform_key = detect_platform_key()
     settings = PLATFORM_SETTINGS[platform_key]
@@ -104,10 +171,16 @@ def main() -> int:
             print(f"エラー: {script_name} の PyInstaller 実行に失敗しました。", file=sys.stderr)
             failed_scripts.append(script_name)
         else:
+            copy_extra_data_files(script_name, release_dir)
             print(f"ビルド完了: {script_name}")
 
     if failed_scripts:
         print(f"失敗したスクリプト: {', '.join(failed_scripts)}", file=sys.stderr)
+        return 1
+
+    archive_ok = create_release_archive(release_dir, settings["exe_suffix"], settings["archive_name"])
+    if not archive_ok:
+        print("エラー: 配布用 zip の作成に失敗しました。", file=sys.stderr)
         return 1
 
     return 0

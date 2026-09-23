@@ -35,7 +35,13 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
 VERSION = "0.9.0"
 HOST = "0.0.0.0"
 PORT = 50007
-_MODULE_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
+# PyInstaller onefile 実行時は __file__ が一時展開先を指すため、実行ファイルの場所を使う。
+if getattr(sys, "frozen", False):
+    _MODULE_DIR = Path(sys.executable).resolve().parent
+elif "__file__" in globals():
+    _MODULE_DIR = Path(__file__).resolve().parent
+else:
+    _MODULE_DIR = Path.cwd()
 GUI_SETTINGS_PATH = _MODULE_DIR / "remote_indipad_receiver.json"
 DEFAULT_GUI_SETTINGS = {
     "mount": "",

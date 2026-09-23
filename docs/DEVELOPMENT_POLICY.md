@@ -98,7 +98,7 @@
 - Mapping Editor の保存ボタンで変更したマッピングを保存する。
 - 保存されたマッピングは設定ファイルの action_mapping に保持される。
 - AXIS は入力値の状態ごとに `NEGATIVE`（-1）、`CENTER`（0）、`POSITIVE`（1）の 3 つの action を設定できる。
-- AXIS の deadzone は設定ファイルの `deadzone` に保存する。値は 0.0 以上 1.0 以下とし、初期値は 0.08 とする。
+- AXIS の deadzone は設定ファイルの `deadzone` に保存する。値は 0.0 以上 1.0 以下とし、初期値は 0.6 とする。
 - マッピングを変更した場合、変更内容を操作へ反映するには受信側への再接続が必要である。
 
 ### 3.3 GUI - Linux
@@ -180,7 +180,7 @@ PS> .venv\Scripts\activate
   - `abs(value) <= deadzone`: `CENTER`（0）
   - `value > deadzone`: `POSITIVE`（1）
 - deadzone の設定値は `remote_indipad_sender.json` の `deadzone` から読み込み、保存時にも保持する。
-- deadzone の初期値は 0.08 とし、設定値は 0.0 から 1.0 の範囲に収める。
+- deadzone の初期値は 0.6 とし、設定値は 0.0 から 1.0 の範囲に収める。
 - 各 AXIS は `NEGATIVE`、`CENTER`、`POSITIVE` の状態ごとに独立した抽象化操作を割り当てる。未使用の状態は空文字列で表す。
 - 接続直後の最初の AXIS 値は初期状態として扱う。初期値が -1、0、1 のいずれであっても、現在状態に割り当てられた action のみを押下状態として送信する。
 - 前回値が存在する場合は、状態が変化したときだけ前状態の release と現状態の press を送信する。

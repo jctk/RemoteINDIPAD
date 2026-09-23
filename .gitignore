@@ -3,6 +3,8 @@ build/
 dist/
 *.spec
 *.spec.bak
+release/*/remote_indipad*
+release/*/gamepad_profiles.json
 
 # python
 __pycache__/

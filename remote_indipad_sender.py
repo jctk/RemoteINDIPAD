@@ -50,8 +50,14 @@ import remote_indipad_protocol as protocol
 VERSION = "0.9.0"
 HOST = "127.0.0.1"
 PORT = 50007
-DEADZONE = 0.08
-_MODULE_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
+DEADZONE = 0.6
+# PyInstaller onefile 実行時は __file__ が一時展開先を指すため、実行ファイルの場所を使う。
+if getattr(sys, "frozen", False):
+    _MODULE_DIR = Path(sys.executable).resolve().parent
+elif "__file__" in globals():
+    _MODULE_DIR = Path(__file__).resolve().parent
+else:
+    _MODULE_DIR = Path.cwd()
 GUI_SETTINGS_PATH = _MODULE_DIR / "remote_indipad_sender.json"
 AVAILABLE_ACTIONS = [
     "",
