@@ -1404,7 +1404,7 @@ $ gdbus call --session --dest org.kde.kstars --object-path /KStars/Ekos/Focus --
 
 ※相対移動がないので /KStars/Ekos/Mount は使えない・・・
 
-## MOUNT - /KStars/Ekos/Align
+## ALIGN - /KStars/Ekos/Align
 
 ```bash
 # /KStars/Ekos/Align
