@@ -1,5 +1,7 @@
 # RemoteINDIPAD
 
+[English README](README.md)
+
 Windows に接続したゲームパッドの入力を、LAN 経由で Linux（StellarMate OS や Ubuntu など）側の KStars / Ekos / INDI に伝送し、フォーカサー・フィルターホイール・ローテーター・KStarsのSkyMapなどの観測機器を操作するためのツールです。
 
 ## 概要
@@ -9,7 +11,7 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 - 受信側（Linux）: 受信した抽象化操作を KStars / Ekos / INDI への D-BUS 制御コマンドに変換して観測機器を操作します。
 
 > ⚠️このプログラムはほぼ GitHub Copilot で開発されています。
-想像もしていない方法での実装・冗長なコード・不具合などが残されている可能性があります。
+開発者が想像もしていない方法での実装・冗長なコード・不具合などが残されている可能性があります。
 
 ## 確認済みのデバイス
 
@@ -54,32 +56,25 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 
 ### ダウンロード
 
-Current Version: 0.9.0
+[Releases](https://github.com/jctk/RemoteINDIPAD/releases) からファイルを Windows 用の `RemoteINDIPAD-windows-x64.zip` と StellarMate OS 用の `RemoteINDIPAD-linux-aarch64.tar.gz` をダウンロードしてください。
 
-以下のリンクの Sender で Windows 用と Receiver から StellarMate OS 用をダウンロードし、それぞれの OS の任意のフォルダーへ保存してください。
+### インストール
 
-#### Sender
-
-| File | Architecture | Descritption | Release Date | SHA256 |
-| - | - | - | - | - |
-| [remote_indipad_sender.exe](https://github.com/) | Windows x64 | | 2026-9-xx | |
-
-#### Receiver
-
-| File | Architecture | Descritption | Release Date | SHA256 |
-| - | - | - | - | - |
-| [remote_indipad_receiver](https://github.com/) | StellarMate OS aarch64 | | 2026-9-xx | |
-| [remote_indipad_reciever.exe](https://github.com/) | Windows x64 | 試験用。応答はしますがKStars/Ekos/INDIの操作はできません。 | 2026-9-xx | |
+1. Windows で `RemoteINDIPAD-windows-x64.zip` を展開し `remote_indipad_sender.exe` と `gamepad_profiles.json` を任意の同じフォルダーに展開してください。
+2. StellarMate OS で `RemoteINDIPAD-linux-aarch64.tar.gz` を展開し `remote_indipad_reciever` を任意のフォルダーに展開してください。
 
 ### 使い方
 
-1. StellarMate OS で KStars を起動し Ekos Profile を Start する。MountはUnparkしておく。
+1. StellarMate OS で KStars を起動し Ekos Profile を Start する。Mount を使用する場合は Unpark しておく。
 1. StellarMate OS で `remote_indipad_receiver` を起動する。
+1. Mount / Focuser / Filter Wheel / Rotator のドロップダウンリストに Start 済みの Ekos Profile のデバイスが記入される。同一種類のデバイスが複数接続されている場合はドロップダウンリストから手動選択する。
 1. Windows PC に GAMEPAD を接続する。
 1. Windows で `remote_indipad_sender.exe` を起動する。
-1. `[Controller]` で接続した GAMEPAD を選択し `[Edit Mapping]` ボタン INDIPAD Mapping Editor を開き DPAD/Buttons/Axes にKStars/INDI の操作をマッピングする。マッピングを終えたら `[Close]`で INDIPAD Mapping Editor を閉じる。
-1. `[Host]`にStellarMate OSのIPアドレスを記入し、`[Connect]`ボタンで StellarMate OS の `remote_indipad_receiver` に接続する。接続すると両方のコンソールにその旨ログが表示される。
+1. `[Controller]` で使用する GAMEPAD を選択し `[Edit Mapping]` ボタン INDIPAD Mapping Editor を開き DPAD/Buttons/Axes にKStars/INDI の操作をマッピングする。マッピングを終えたら `[Close]`で INDIPAD Mapping Editor を閉じる。
+1. `[Host]`に StellarMate OS のIPアドレスを記入し、`[Connect]`ボタンで StellarMate OS の `remote_indipad_receiver` に接続する。接続すると両方のコンソールにその旨ログが表示される。
 1. GAMEPADで操作する。
+
+> ⚠️最初は控えめな操作で動作を確認してください。特にマウントやローテーターが異常な動作をする場合は機材が損傷する恐れがあります。いつでも機材を停止できるように心がけてください。
 
 ## スクリプト形式
 
@@ -128,31 +123,22 @@ source .venv/bin/activate
 pip install pyside6 dbus-next
 ```
 
-## Usage
+## 起動方法
 
-### 送信側（Windows）を起動する
+- 各スクリプトを python で起動してください。
+- 起動方法以外の使用方法は [使い方](#使い方) に記載の通りです。
+
+### Windows の場合
 
 ```powershell
 python remote_indipad_sender.py
 ```
 
-- GUI 上でコントローラー・接続先ホスト / ポートを選択し、"Connect" で接続を開始します。
-- "Edit Mapping" からゲームパッドの DPAD / ボタン / スティックと抽象化操作の対応を編集できます。
-
-### 受信側（Linux）を起動する
+### StellarMate OS の場合
 
 ```bash
 python remote_indipad_receiver.py
 ```
-
-- GUI 上で "Scan INDI" を押すと、利用可能なマウント / フォーカサー / フィルターホイール / ローテーターを検出します。
-- リスニング IP / ポートを設定し、送信側からの接続を待ち受けます。
-
-## Configuration
-
-- `remote_indipad_sender.json`: 送信側の接続設定・マッピング・ウィンドウ位置などを保存します。
-- `remote_indipad_receiver.json`: 受信側の接続設定・デバイス選択・ウィンドウ位置などを保存します。
-- `gamepad_profiles.json`: ゲームパッドの機種ごとの既定マッピングを定義します。
 
 ## License
 
