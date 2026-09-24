@@ -13,6 +13,8 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 > ⚠️このプログラムはほぼ GitHub Copilot で開発されています。
 開発者が想像もしていない方法での実装・冗長なコード・不具合などが残されている可能性があります。
 
+![Diagram](images/diagram.png)
+
 ## 確認済みのデバイス
 
 ### GAMEPAD

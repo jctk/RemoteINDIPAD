@@ -13,6 +13,8 @@ A tool that transmits input from a gamepad connected to Windows over a LAN to KS
 > ⚠️ This program has been developed almost entirely with GitHub Copilot.
 > Implementations in ways the developer did not anticipate, redundant code, and bugs may remain.
 
+![Diagram](images/diagram.png)
+
 ## Tested Devices
 
 ### GAMEPAD
