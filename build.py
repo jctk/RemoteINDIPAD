@@ -142,7 +142,7 @@ def create_release_archive(
             files_to_archive.append(data_path)
 
     archive_path = output_dir / f"{archive_name}.{archive_format}"
-    hash_path = output_dir / f"{archive_name}.txt"
+    hash_path = output_dir / f"{archive_path.name}.sha256"
 
     if archive_format == "zip":
         with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
