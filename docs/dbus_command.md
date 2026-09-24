@@ -1124,7 +1124,9 @@ gdbus call --session --dest org.kde.kstars --object-path /KStars/INDI --method o
 基本構造
 
 ```bash
-$ gdbus introspect --session --dest org.kde.kstars --object-path /KStars/Ekos
+gdbus introspect --session --dest org.kde.kstars --object-path /KStars/Ekos
+
+gdbus introspect --session --dest org.kde.kstars --object-path /KStars/Ekos -r
 ```
 
 全プロパティ取得
@@ -1141,19 +1143,252 @@ $ gdbus call --session --dest org.kde.kstars --object-path /KStars/Ekos --method
 (['Simulators', 'sim sm5', 'RC6', 'sim sv241pro', 'sim'],)
 ```
 
-Optical Train 取得
+## FOCUS - /KStars/Ekos/Capture
 
 ```bash
+# /KStars/Ekos/Capture
+gdbus introspect --session --dest org.kde.kstars --object-path /KStars/Ekos/Capture
+node /KStars/Ekos/Capture {
+  interface org.kde.kstars.Ekos.Capture {
+    methods:
+      start(in  s train,
+            out s arg_1);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      abort(in  s train);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      suspend();
+      @org.freedesktop.DBus.Method.NoReply("true")
+      stop();
+      @org.freedesktop.DBus.Method.NoReply("true")
+      pause();
+      @org.freedesktop.DBus.Method.NoReply("true")
+      toggleSequence();
+      @org.freedesktop.DBus.Method.NoReply("true")
+      restartCamera(in  s name);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      toggleVideo(in  b enabled);
+      findCameraPosition(in  s train,
+                         in  b addIfNecessary,
+                         out i arg_0);
+      loadSequenceQueue(in  s fileURL,
+                        in  s train,
+                        in  b isMaster,
+                        in  s targetName,
+                        out b arg_0);
+      saveSequenceQueue(in  s path,
+                        out b arg_0);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      clearSequenceQueue();
+      getSequenceQueueStatus(out s arg_0);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setMaximumGuidingDeviation(in  b enable,
+                                 in  d value);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setInSequenceFocus(in  b enable,
+                         in  d HFR);
+      getJobCount(out i arg_0);
+      getPendingJobCount(out i arg_0);
+      getJobState(in  i id,
+                  out s arg_0);
+      getJobFilterName(in  i id,
+                       out s arg_0);
+      getJobImageProgress(in  i id,
+                          out i arg_0);
+      getJobImageCount(in  i id,
+                       out i arg_0);
+      getJobExposureProgress(in  i id,
+                             out d arg_0);
+      getJobExposureDuration(in  i id,
+                             out d arg_0);
+      getJobFrameType(in  i id,
+                      out i arg_0);
+      getJobPlaceholderFormat(out s arg_0);
+      getJobPreviewFileName(out s arg_0);
+      getProgressPercentage(out d arg_0);
+      getActiveJobID(out i arg_0);
+      getActiveJobRemainingTime(out i arg_0);
+      getOverallRemainingTime(out i arg_0);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      clearAutoFocusHFR(in  s trainname);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      ignoreSequenceHistory();
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setCapturedFramesMap(in  s signature,
+                           in  i count,
+                           in  s train);
+      setPicturesDirectory(in  s path,
+                           out b arg_1);
+      getPicturesDirectory(out s arg_0);
+      mainCameraDeviceName(out s arg_0);
+    signals:
+      newLog(s text);
+      meridianFlipStarted();
+      @org.qtproject.QtDBus.QtTypeName.Out0("Ekos::CaptureState")
+      newStatus((i) status,
+                s trainname,
+                i cameraID);
+      @org.qtproject.QtDBus.QtTypeName.In0("QVariantMap")
+      @org.qtproject.QtDBus.QtTypeName.Out0("QVariantMap")
+      captureComplete(a{sv} metadata,
+                      s train);
+      ready();
+    properties:
+      readwrite s targetName = '';
+      readwrite s observerName = '';
+      readwrite s opticalTrain = 'Primary';
+      readonly s camera = 'CCD Simulator';
+      readonly s filterWheel = 'CCD Simulator';
+      readwrite s filter = 'Luminance';
+      readwrite b coolerControl = true;
+      readonly as logText = [];
+      @org.qtproject.QtDBus.QtTypeName("Ekos::CaptureState")
+      readonly i status = 0;
+  };
+  interface org.freedesktop.DBus.Properties {
+    methods:
+      Get(in  s interface_name,
+          in  s property_name,
+          out v value);
+      Set(in  s interface_name,
+          in  s property_name,
+          in  v value);
+      @org.qtproject.QtDBus.QtTypeName.Out0("QVariantMap")
+      GetAll(in  s interface_name,
+             out a{sv} values);
+    signals:
+      @org.qtproject.QtDBus.QtTypeName.Out1("QVariantMap")
+      PropertiesChanged(s interface_name,
+                        a{sv} changed_properties,
+                        as invalidated_properties);
+    properties:
+  };
+  interface org.freedesktop.DBus.Introspectable {
+    methods:
+      Introspect(out s xml_data);
+    signals:
+    properties:
+  };
+  interface org.freedesktop.DBus.Peer {
+    methods:
+      Ping();
+      GetMachineId(out s machine_uuid);
+    signals:
+    properties:
+  };
+};
+```
+
+```bash
+# Optical Train 取得
 $ gdbus call --session --dest org.kde.kstars --object-path /KStars/Ekos/Capture --method org.freedesktop.DBus.Properties.Get org.kde.kstars.Ekos.Capture opticalTrain
 ```
-※/KStars/Ekos に Optical Train を取得する method や property はない。
 
 ## FOCUS - /KStars/Ekos/Focus
 
 ```bash
-# /KStars/Ekos/Focusの 構造調査
-$ gdbus introspect --session --dest org.kde.kstars --object-path /KStars/Ekos/Focus
+# /KStars/Ekos/Focus
+gdbus introspect --session --dest org.kde.kstars --object-path /KStars/Ekos/Focus
+node /KStars/Ekos/Focus {
+  interface org.kde.kstars.Ekos.Focus {
+    methods:
+      camera(in  s trainname,
+             out s arg_1);
+      filterWheel(in  s trainname,
+                  out s arg_1);
+      filter(in  s trainname,
+             out s arg_1);
+      setFilter(in  s filter,
+                in  s trainname,
+                out b arg_2);
+      focuser(in  s trainname,
+              out s arg_1);
+      @org.qtproject.QtDBus.QtTypeName.Out0("Ekos::FocusState")
+      status(in  s trainname,
+             out (i) arg_1);
+      start(in  s trainname,
+            out b arg_1);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      abort(in  s trainname);
+      capture(in  s trainname,
+              in  d settleTime,
+              out b arg_2);
+      focusIn(in  s trainname,
+              in  i ms,
+              out b arg_1);
+      focusOut(in  s trainname,
+               in  i ms,
+               out b arg_1);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      checkFocus(in  d requiredHFR,
+                 in  s trainname);
+      canAutoFocus(in  s trainname,
+                   out b arg_1);
+      useFullField(in  s trainname,
+                   out b arg_1);
+      setBinning(in  i binX,
+                 in  i binY,
+                 in  s trainname,
+                 out b arg_3);
+      setAutoStarEnabled(in  b enable,
+                         in  s trainname,
+                         out b arg_2);
+      setAutoSubFrameEnabled(in  b enable,
+                             in  s trainname,
+                             out b arg_2);
+      setAutoFocusParameters(in  s trainname,
+                             in  i boxSize,
+                             in  i stepSize,
+                             in  i maxTravel,
+                             in  d tolerance,
+                             out b arg_5);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      resetFrame(in  s trainname);
+    signals:
+      @org.qtproject.QtDBus.QtTypeName.Out0("Ekos::FocusState")
+      newStatus((i) status,
+                s trainname);
+      newLog(s text);
+      newHFR(d HFR,
+             i position,
+             b inAutofocus,
+             s trainname);
+    properties:
+  };
+  interface org.freedesktop.DBus.Properties {
+    methods:
+      Get(in  s interface_name,
+          in  s property_name,
+          out v value);
+      Set(in  s interface_name,
+          in  s property_name,
+          in  v value);
+      @org.qtproject.QtDBus.QtTypeName.Out0("QVariantMap")
+      GetAll(in  s interface_name,
+             out a{sv} values);
+    signals:
+      @org.qtproject.QtDBus.QtTypeName.Out1("QVariantMap")
+      PropertiesChanged(s interface_name,
+                        a{sv} changed_properties,
+                        as invalidated_properties);
+    properties:
+  };
+  interface org.freedesktop.DBus.Introspectable {
+    methods:
+      Introspect(out s xml_data);
+    signals:
+    properties:
+  };
+  interface org.freedesktop.DBus.Peer {
+    methods:
+      Ping();
+      GetMachineId(out s machine_uuid);
+    signals:
+    properties:
+  };
+};
+```
 
+```bash
 # 停止
 $ gdbus call --session --dest org.kde.kstars --object-path /KStars/Ekos/Focus --method org.kde.kstars.Ekos.Focus.abort "Primary"
 
@@ -1168,3 +1403,94 @@ $ gdbus call --session --dest org.kde.kstars --object-path /KStars/Ekos/Focus --
 ## MOUNT - /KStars/Ekos/Mount
 
 ※相対移動がないので /KStars/Ekos/Mount は使えない・・・
+
+## MOUNT - /KStars/Ekos/Align
+
+```bash
+# /KStars/Ekos/Align
+gdbus introspect --session --dest org.kde.kstars --object-path /KStars/Ekos/Align
+node /KStars/Ekos/Align {
+  interface org.kde.kstars.Ekos.Align {
+    methods:
+      @org.freedesktop.DBus.Method.NoReply("true")
+      abort();
+      captureAndSolve(out b arg_0);
+      loadAndSlew(in  s fileURL,
+                  out b arg_0);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setSolverMode(in  u mode);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setSolverAction(in  i mode);
+      @org.qtproject.QtDBus.QtTypeName.In0("QList<double>")
+      @org.qtproject.QtDBus.QtTypeName.Out0("QList<double>")
+      cameraInfo(out ad arg_0);
+      @org.qtproject.QtDBus.QtTypeName.In0("QList<double>")
+      @org.qtproject.QtDBus.QtTypeName.Out0("QList<double>")
+      getSolutionResult(out ad arg_0);
+      @org.qtproject.QtDBus.QtTypeName.In0("QList<double>")
+      @org.qtproject.QtDBus.QtTypeName.Out0("QList<double>")
+      telescopeInfo(out ad arg_0);
+      getLoadAndSlewStatus(out i arg_0);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setBinningIndex(in  i binningIndex);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setTargetCoords(in  d ra,
+                      in  d de);
+      @org.qtproject.QtDBus.QtTypeName.In0("QList<double>")
+      @org.qtproject.QtDBus.QtTypeName.Out0("QList<double>")
+      getTargetCoords(out ad arg_0);
+      @org.freedesktop.DBus.Method.NoReply("true")
+      setTargetPositionAngle(in  d value);
+    signals:
+      @org.qtproject.QtDBus.QtTypeName.In0("Ekos::AlignState")
+      @org.qtproject.QtDBus.QtTypeName.Out0("Ekos::AlignState")
+      newStatus((i) status);
+      @org.qtproject.QtDBus.QtTypeName.In0("QVariantMap")
+      @org.qtproject.QtDBus.QtTypeName.Out0("QVariantMap")
+      newSolution(a{sv} solution);
+      newLog(s text);
+    properties:
+      readwrite s opticalTrain = 'Primary';
+      readonly s camera = 'CCD Simulator';
+      readonly s filterWheel = 'CCD Simulator';
+      readwrite s filter = 'Red';
+      readonly as logText = ['2026-09-24T15:25:31 World Coordinate System (WCS) is enabled.'];
+      @org.qtproject.QtDBus.QtTypeName("Ekos::AlignState")
+      readonly i status = 0;
+      @org.qtproject.QtDBus.QtTypeName("QList<double>")
+      readonly ad fov = [381.36069445084854, 305.08855556067886, 17.876282552383525];
+      readwrite s solverArguments = '';
+  };
+  interface org.freedesktop.DBus.Properties {
+    methods:
+      Get(in  s interface_name,
+          in  s property_name,
+          out v value);
+      Set(in  s interface_name,
+          in  s property_name,
+          in  v value);
+      @org.qtproject.QtDBus.QtTypeName.Out0("QVariantMap")
+      GetAll(in  s interface_name,
+             out a{sv} values);
+    signals:
+      @org.qtproject.QtDBus.QtTypeName.Out1("QVariantMap")
+      PropertiesChanged(s interface_name,
+                        a{sv} changed_properties,
+                        as invalidated_properties);
+    properties:
+  };
+  interface org.freedesktop.DBus.Introspectable {
+    methods:
+      Introspect(out s xml_data);
+    signals:
+    properties:
+  };
+  interface org.freedesktop.DBus.Peer {
+    methods:
+      Ping();
+      GetMachineId(out s machine_uuid);
+    signals:
+    properties:
+  };
+};
+```
