@@ -36,7 +36,7 @@ A tool that transmits input from a gamepad connected to Windows over a LAN to KS
 
 ### KStars
 
-- SkyMap: Zoom in, zoom out, and rotate the field of view
+- SkyMap: Zoom in, zoom out, and rotate the map
 
 ### INDI
 
@@ -71,7 +71,7 @@ Download `RemoteINDIPAD-windows-x64.zip` for Windows and `RemoteINDIPAD-linux-aa
 
 1. Start KStars on StellarMate OS and start the Ekos Profile. If you are using a mount, unpark it first.
 1. Start `remote_indipad_receiver` on StellarMate OS.
-1. The devices from the started Ekos Profile are listed in the Mount / Focuser / Filter Wheel / Rotator dropdown lists. If multiple devices of the same type are connected, select one manually from the appropriate dropdown list.
+1. The device names from the started Ekos Profile are displayed in the Mount / Focuser / Filter Wheel / Rotator dropdown lists. If multiple devices of the same type are connected, select one manually from the appropriate dropdown list.
 1. Connect the GAMEPAD to the Windows PC.
 1. Start `remote_indipad_sender.exe` on Windows.
 1. Select the GAMEPAD to use in `[Controller]`, then click `[Edit Mapping]` to open the INDIPAD Mapping Editor. Map the DPAD / Buttons / Axes to KStars / INDI operations. When mapping is complete, close the INDIPAD Mapping Editor with `[Close]`.
@@ -80,9 +80,9 @@ Download `RemoteINDIPAD-windows-x64.zip` for Windows and `RemoteINDIPAD-linux-aa
 
 > ⚠️ Start with conservative movements and verify operation first. In particular, abnormal behavior of a mount or rotator may damage the equipment. Make sure you can stop the equipment at any time.
 
-## Script Format
+## Script Format (GitHub Repository)
 
-The script format is the development environment for RemoteINDIPAD.
+- The script format is the development repository for RemoteINDIPAD.
 
 ### Requirements
 
@@ -143,6 +143,52 @@ python remote_indipad_sender.py
 ```bash
 python remote_indipad_receiver.py
 ```
+
+## User Interface
+
+### RemoteINDIPAD sender
+
+![RemoteINDIPAD Sender](images/RemoteINDIPAD_sender.png)
+
+| Item | Description |
+| - | - |
+| Controller | Select the GAMEPAD to use. |
+| Host / Port | The IP address of StellarMate OS and the port configured for the RemoteINDIPAD receiver (default: 50007). |
+| Logs - Heartbeat | Display transmitted heartbeats in the console. |
+| Focus step | The step size for focus in/out operations. |
+| Connect / Disconnect | Connect to or disconnect from the RemoteINDIPAD receiver. |
+| Edit Mapping | Open the INDIPAD Mapping Editor. |
+| Close | Close RemoteINDIPAD sender. |
+| MONITOR | Display GAMEPAD information and the current axis, DPAD, and button states. |
+| INDIPAD console | Display operation and communication status. |
+| Clear | Clear the console. |
+
+### RemoteINDIPAD sender - INDIPAD Mapping Editor
+
+- Assign abstract actions to the DPAD, buttons, and axes.
+- The corresponding list is highlighted when the GAMEPAD is operated.
+- Axes return decimal values from -1 to 1 and are normalized to -1, 0, or 1 based on the default -0.8 to 0.8 thresholds.
+- Axes are at one of -1, 0, or 1 by default. Note that the triggers on Xbox controllers are at -1 in their default state.
+- The physical number of GAMEPAD DPAD inputs, buttons, and axes may differ from the number reported by the GAMEPAD driver.
+
+![INDIPAD Mapping Editor](images/INDIPADMappingEditor.png)
+
+### RemoteINDIPAD receiver
+
+![RemoteINDIPAD Receiver](images/RemoteINDIPAD_receiver.png)
+
+| Item | Description |
+| - | - |
+| Mount | The name of an available MOUNT INDI driver. Select one from the list when multiple drivers are available. |
+| Focuser | The name of an available focuser INDI driver. Select one from the list when multiple drivers are available. |
+| Filter Wheel | The name of an available filter wheel INDI driver. Select one from the list when multiple drivers are available. The number after the INDI driver name is the number of filter wheel slots. |
+| Rotator | The name of an available rotator INDI driver. Select one from the list when multiple drivers are available. |
+| Listening IP / Port | The IP address and port of the network interface used for connections. The default IP address is 0.0.0.0, which uses all network interfaces. The default port is 50007. |
+| Scan INDI | Scan for available INDI drivers and populate each driver list. |
+| Restart | Restart the listener. Use this after changing the IP address or port. |
+| Close | Close RemoteINDIPAD receiver. |
+| INDIPAD console | Display operation and communication status. |
+| Clear | Clear the console. |
 
 ## License
 

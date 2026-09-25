@@ -36,7 +36,7 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 
 ### KStars
 
-- SkyMap: Zoom In、Zoom Out、視野回転
+- SkyMap: Zoom In、Zoom Out、マップの回転
 
 ### INDI
 
@@ -47,8 +47,8 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 
 ## 配布
 
-- 配布形態は二種類です。
-- 一つは実行ファイル形式、もう一つはスクリプト形式です。
+- 配布形態は二種類あります。
+- 一つは実行ファイル形式、もう一つはスクリプト形式（GitHubのリポジトリ）です。
 - いずれか一方をご利用ください。
 
 ## 実行ファイル形式
@@ -71,7 +71,7 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 
 1. StellarMate OS で KStars を起動し Ekos Profile を Start する。Mount を使用する場合は Unpark しておく。
 1. StellarMate OS で `remote_indipad_receiver` を起動する。
-1. Mount / Focuser / Filter Wheel / Rotator のドロップダウンリストに Start 済みの Ekos Profile のデバイスが記入される。同一種類のデバイスが複数接続されている場合はドロップダウンリストから手動選択する。
+1. Mount / Focuser / Filter Wheel / Rotator のドロップダウンリストに Start 済みの Ekos Profile のデバイス名が表示される。同一種類のデバイスが複数接続されている場合はドロップダウンリストから手動選択する。
 1. Windows PC に GAMEPAD を接続する。
 1. Windows で `remote_indipad_sender.exe` を起動する。
 1. `[Controller]` で使用する GAMEPAD を選択し `[Edit Mapping]` ボタン INDIPAD Mapping Editor を開き DPAD/Buttons/Axes にKStars/INDI の操作をマッピングする。マッピングを終えたら `[Close]`で INDIPAD Mapping Editor を閉じる。
@@ -80,9 +80,9 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 
 > ⚠️最初は控えめな操作で動作を確認してください。特にマウントやローテーターが異常な動作をする場合は機材が損傷する恐れがあります。いつでも機材を停止できるように心がけてください。
 
-## スクリプト形式
+## スクリプト形式（GitHubのレポジトリ）
 
-スクリプト形式は RemoteINDIPAD の開発用の環境です。
+- スクリプト形式は RemoteINDIPAD の開発用のリポジトリです。
 
 ### Requirements
 
@@ -143,6 +143,52 @@ python remote_indipad_sender.py
 ```bash
 python remote_indipad_receiver.py
 ```
+
+## ユーザーインターフェース
+
+### RemoteINDIPAD sender
+
+![RemoteINDIPAD Sender](images/RemoteINDIPAD_sender.png)
+
+| 項目 | 説明 |
+| - | - |
+| Controller | 使用するGAMEPADを選択する。 |
+| Host / Port | 接続先の StellarMate OS の IP アドレスと RemoteINDIPAD receiver で設定されたポート番号（デフォルトは50007） |
+| Logs - Heartbeat | 送信するHeartbeatを Console に表示する。 |
+| Focus step | フォーカスIN/OUT のステップ数 |
+| Connect / Disconnect | RemoteINDIPAD receiver と接続または切断する。 |
+| Edit Mapping | INDIPAD Mapping Editor を開く |
+| Close | RemoteINDIPAD sender を閉じる |
+| MONITOR | GAMEPAD の情報や、軸/DPAD/ボタン の現在の状態を表示する。 |
+| INDIPAD console | 操作や通信の状態を表示する。 |
+| Clear | コンソールをクリアする。 |
+
+### RemoteINDIPAD sender- INDIPAD Mapping Editor
+
+- DPAD/ボタン/軸に抽象化されたActionを割り当てる。
+- GAMEPADの操作をすると該当するリストがハイライトする。
+- 軸は-1から1の小数値を返すが、デフォルトで-0.8から0.8を基準に -1, 0, 1 に正規化される。
+- 軸はデフォルトで -1, 0, 1 のいずれかの位置にある。XBox コントローラーのトリガーはデフォルト状態で -1 にあるので注意が必要。
+- GAMEPADのDPAD/ボタン/軸は、物理的に存在する数と、GAMEPADのドライバーが返す数が異なる場合がある。
+
+![INDIPAD Mapping Editor](images/INDIPADMappingEditor.png)
+
+### RemoteINDIPAD receiver
+
+![RemoteINDIPAD Receiver](images/RemoteINDIPAD_receiver.png)
+
+| 項目 | 説明 |
+| - | - |
+| Mount | 利用可能な MOUNT の INDIドライバー名。複数ある場合はリストから選択する。 |
+| Focuser | 利用可能な Focuser の INDIドライバー名。複数ある場合はリストから選択する。 |
+| Filter Wheel | 利用可能な Filter Wheel の INDIドライバー名。複数ある場合はリストから選択する。INDIドライバー名の後ろの数値は Filter Wheel のスロット数 |
+| Rotator | 利用可能な Rotator の INDIドライバー名。複数ある場合はリストから選択する。 |
+| Listening IP / Port | 接続用の Network Interfaceの IP アドレスとポート番号。IPアドレスは0.0.0.0がデフォルトですべてのNetwork Interfaceを使用する。ポート番号のデフォルトは50007。 |
+| Scan INDI | 利用可能なINDIドライバーをスキャンし各ドライバーのリストに設定する。 |
+| Restart | 接続待ちの再スタート。IP / Port を変更した場合に使用する。 |
+| Close | RemoteINDIPAD receiver を閉じる |
+| INDIPAD console | 操作や通信の状態を表示する。 |
+| Clear | コンソールをクリアする。 |
 
 ## License
 
