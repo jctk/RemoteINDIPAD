@@ -60,7 +60,8 @@ jobs:
           .venv/bin/pip install pygame pyside6 dbus-next pyinstaller
 
       - name: Warning before building for Linux ARM
-        run: echo "WARNING: This build artifact is not intended for execution on Raspberry Pi devices. Please do not run the generated executable on Raspberry Pi."
+        run: |
+          echo 'WARNING: This build artifact is not intended for execution on Raspberry Pi devices. Please do not run the generated executable on Raspberry Pi.'
 
       - name: Run build.py
         run: .venv/bin/python build.py
