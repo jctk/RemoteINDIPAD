@@ -1,0 +1,67 @@
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "ビルド対象"
+        required: true
+        default: "both"
+        type: choice
+        options:
+          - both
+          - windows-x64
+          - linux-aarch64
+
+jobs:
+  build-windows-x64:
+    if: ${{ github.event.inputs.target == 'both' || github.event.inputs.target == 'windows-x64' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: venv 作成と依存パッケージのインストール
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .venv\Scripts\pip install --upgrade pip
+          .venv\Scripts\pip install pygame pyside6 dbus-next pyinstaller
+
+      - name: build.py 実行
+        shell: pwsh
+        run: .venv\Scripts\python build.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RemoteINDIPAD-windows-x64
+          path: release/windows-x64/
+          retention-days: 30
+
+  build-linux-aarch64:
+    if: ${{ github.event.inputs.target == 'both' || github.event.inputs.target == 'linux-aarch64' }}
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: venv 作成と依存パッケージのインストール
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install pygame pyside6 dbus-next pyinstaller
+
+      - name: build.py 実行
+        run: .venv/bin/python build.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RemoteINDIPAD-linux-aarch64
+          path: release/linux-aarch64/
+          retention-days: 30
