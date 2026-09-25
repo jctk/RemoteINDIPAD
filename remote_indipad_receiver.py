@@ -1846,6 +1846,8 @@ class Receiver:
         self.log_heartbeat = bool(log_heartbeat)
         self.log_callback = log_callback
         self._stop_event = threading.Event()
+        self._thread = None
+        self._server_socket = None
 
     def _emit_log(self, message: str, payload: dict | None = None):
         if message is None:
@@ -1866,15 +1868,27 @@ class Receiver:
         return (now - last_seen) > heartbeat_timeout
 
     def start(self):
-        thread = threading.Thread(target=self._serve, daemon=True)
-        thread.start()
-        return thread
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+        return self._thread
 
     def stop(self):
         self._stop_event.set()
+        server = self._server_socket
+        if server is not None:
+            try:
+                server.close()
+            except OSError:
+                pass
+
+        thread = self._thread
+        if thread is not None and thread is not threading.current_thread() and thread.is_alive():
+            thread.join(timeout=2.0)
 
     def _serve(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+            self._server_socket = server
             server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 server.bind((self.host, self.port))
