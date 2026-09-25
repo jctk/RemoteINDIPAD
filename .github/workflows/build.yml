@@ -33,6 +33,8 @@ jobs:
 
       - name: build.py 実行
         shell: pwsh
+        env:
+          PYTHONUTF8: "1"
         run: .venv\Scripts\python build.py
 
       - uses: actions/upload-artifact@v4
