@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: "ビルド対象"
+        description: "Build Targets"
         required: true
         default: "both"
         type: choice
@@ -24,14 +24,14 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: venv 作成と依存パッケージのインストール
+      - name: Creating a venv and Installing Dependencies
         shell: pwsh
         run: |
           python -m venv .venv
           .venv\Scripts\pip install --upgrade pip
           .venv\Scripts\pip install pygame pyside6 dbus-next pyinstaller
 
-      - name: build.py 実行
+      - name: Run build.py
         shell: pwsh
         env:
           PYTHONUTF8: "1"
@@ -53,13 +53,13 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: venv 作成と依存パッケージのインストール
+      - name: Creating a venv and Installing Dependencies
         run: |
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install pygame pyside6 dbus-next pyinstaller
 
-      - name: build.py 実行
+      - name: Run build.py
         run: .venv/bin/python build.py
 
       - uses: actions/upload-artifact@v5
