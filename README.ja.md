@@ -2,6 +2,8 @@
 
 [English README](README.md)
 
+![Icon](images/icon.png)
+
 Windows に接続したゲームパッドの入力を、LAN 経由で Linux（StellarMate OS や Ubuntu など）側の KStars / Ekos / INDI に伝送し、フォーカサー・フィルターホイール・ローテーター・KStarsのSkyMapなどの観測機器を操作するためのツールです。
 
 ## 概要

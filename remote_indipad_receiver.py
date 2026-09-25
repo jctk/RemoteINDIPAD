@@ -20,7 +20,7 @@ except ImportError:  # pragma: no cover - fallback for missing ctypes
 
 try:
     from PySide6.QtCore import QObject, Qt, QTimer
-    from PySide6.QtGui import QFont
+    from PySide6.QtGui import QFont, QIcon
     from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QSizePolicy, QTextEdit, QVBoxLayout, QWidget
 except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is used
     class QObject:
@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
             pass
 
     QTimer = None
-    QFont = QCheckBox = QComboBox = QFormLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QPushButton = QSizePolicy = QTextEdit = QVBoxLayout = QWidget = object
+    QFont = QIcon = QCheckBox = QComboBox = QFormLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QPushButton = QSizePolicy = QTextEdit = QVBoxLayout = QWidget = object
     QApplication = None
 
 
@@ -42,6 +42,8 @@ elif "__file__" in globals():
     _MODULE_DIR = Path(__file__).resolve().parent
 else:
     _MODULE_DIR = Path.cwd()
+_RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", _MODULE_DIR))
+APP_ICON_PATH = _RESOURCE_DIR / "resources" / "icon.png"
 GUI_SETTINGS_PATH = _MODULE_DIR / "remote_indipad_receiver.json"
 DEFAULT_GUI_SETTINGS = {
     "mount": "",
@@ -1088,6 +1090,7 @@ def _clamp_window_position(x: int, y: int, width: int, height: int) -> tuple:
 class ReceiverWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.setWindowIcon(QIcon(str(APP_ICON_PATH)))
         self.setWindowTitle("INDIPAD HOST")
         self.resize(720, 420)
         self.gui_settings = load_gui_settings()
@@ -1402,6 +1405,7 @@ def run_gui():
     if QObject is None or QApplication is None:
         raise RuntimeError("PySide6 is required to run the receiver GUI. Install it with: pip install pyside6")
     app = QApplication([])
+    app.setWindowIcon(QIcon(str(APP_ICON_PATH)))
     window = ReceiverWindow()
     window.show()
     return app.exec()

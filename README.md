@@ -2,6 +2,8 @@
 
 [日本語 README](README.ja.md)
 
+![Icon](images/icon.png)
+
 A tool that transmits input from a gamepad connected to Windows over a LAN to KStars / Ekos / INDI on Linux, such as StellarMate OS or Ubuntu, allowing you to operate equipment including focusers, filter wheels, rotators, and the KStars SkyMap.
 
 ## Overview

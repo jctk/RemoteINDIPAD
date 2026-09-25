@@ -24,20 +24,20 @@ SCRIPTS = ["remote_indipad_receiver.py", "remote_indipad_sender.py"]
 EXTRA_DATA_FILES = {
     "remote_indipad_sender.py": ["gamepad_profiles.json"],
 }
+ICON_DATA_FILE = "resources/icon.png"
 
 # 実行環境ごとの出力先ディレクトリ名・アイコン・配布用アーカイブの設定。
 PLATFORM_SETTINGS = {
     "windows-x64": {
         "release_dir": "windows-x64",
-        # アイコンファイルが用意できたら .ico のパスを設定する。
-        "icon": None,
+        "icon": str(ROOT_DIR / "resources" / "icon.ico"),
         "exe_suffix": ".exe",
         "archive_name": "RemoteINDIPAD-windows-x64",
         "archive_format": "zip",
     },
     "linux-aarch64": {
         "release_dir": "linux-aarch64",
-        "icon": None,
+        "icon": str(ROOT_DIR / "resources" / "icon.icns"),
         "exe_suffix": "",
         "archive_name": "RemoteINDIPAD-linux-aarch64",
         "archive_format": "tar.gz",
@@ -89,6 +89,8 @@ def run_pyinstaller(script_name: str, release_dir: str, icon: str | None) -> boo
         "--specpath",
         str(ROOT_DIR),
         "--noconfirm",
+        "--add-data",
+        f"{ROOT_DIR / ICON_DATA_FILE}{';' if platform.system() == 'Windows' else ':'}resources",
     ]
 
     if icon:

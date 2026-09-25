@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover - fallback for missing joystick package
 
 try:
     from PySide6.QtCore import QObject, Qt, QTimer, Signal
-    from PySide6.QtGui import QColor, QFont, QPalette
+    from PySide6.QtGui import QColor, QFont, QIcon, QPalette
     from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSpinBox, QTextEdit, QVBoxLayout, QWidget, QSizePolicy
 except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is used
     class QObject:
@@ -41,7 +41,7 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
 
     QTimer = None
     Signal = _FallbackSignal
-    QColor = QPalette = QFont = QCheckBox = QComboBox = QFormLayout = QGridLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QMessageBox = QPushButton = QSpinBox = QTextEdit = QVBoxLayout = QWidget = object
+    QColor = QIcon = QPalette = QFont = QCheckBox = QComboBox = QFormLayout = QGridLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QMessageBox = QPushButton = QSpinBox = QTextEdit = QVBoxLayout = QWidget = object
     QApplication = None
 
 import remote_indipad_protocol as protocol
@@ -58,6 +58,8 @@ elif "__file__" in globals():
     _MODULE_DIR = Path(__file__).resolve().parent
 else:
     _MODULE_DIR = Path.cwd()
+_RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", _MODULE_DIR))
+APP_ICON_PATH = _RESOURCE_DIR / "resources" / "icon.png"
 GUI_SETTINGS_PATH = _MODULE_DIR / "remote_indipad_sender.json"
 AVAILABLE_ACTIONS = [
     "",
@@ -1302,6 +1304,7 @@ def _clamp_window_position(x: int, y: int, width: int, height: int) -> tuple:
 class IndipadWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.setWindowIcon(QIcon(str(APP_ICON_PATH)))
         self.setWindowTitle("INDIPAD")
         self.resize(720, 520)
         self.worker = None
@@ -1914,6 +1917,7 @@ class MappingEditorWindow(QMainWindow):
 
     def __init__(self, parent=None, mapping: dict | None = None, selected_device: str | None = None):
         super().__init__(parent)
+        self.setWindowIcon(QIcon(str(APP_ICON_PATH)))
         self.setWindowTitle("INDIPAD Mapping Editor")
         self.resize(760, 540)
         self.selected_device = selected_device
@@ -2130,6 +2134,7 @@ def run_gui():
     if QObject is None or QApplication is None:
         raise RuntimeError("PySide6 is required to run the GUI sender. Install it with: pip install pyside6")
     app = QApplication([])
+    app.setWindowIcon(QIcon(str(APP_ICON_PATH)))
     window = IndipadWindow()
     window.show()
     return app.exec()
