@@ -6,17 +6,17 @@ on:
       target:
         description: "Build Targets"
         required: true
-        default: "both"
+        default: "all"
         type: choice
         options:
-          - both
+          - all
           - windows-x64
           - linux-aarch64
           - linux-x64
 
 jobs:
   build-windows-x64:
-    if: ${{ github.event.inputs.target == 'both' || github.event.inputs.target == 'windows-x64' }}
+    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'windows-x64' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -45,7 +45,7 @@ jobs:
           retention-days: 30
 
   build-ubuntu-arch64:
-    if: ${{ github.event.inputs.target == 'both' || github.event.inputs.target == 'linux-aarch64' }}
+    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'linux-aarch64' }}
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v5
@@ -74,7 +74,7 @@ jobs:
           retention-days: 30
 
   build-ubuntu-x64:
-    if: ${{ github.event.inputs.target == 'both' || github.event.inputs.target == 'linux-x64' }}
+    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'linux-x64' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
