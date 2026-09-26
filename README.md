@@ -158,6 +158,8 @@ RemoteINDIPAD sender replaces input from a GAMEPAD connected to Windows with abs
 | Controller | Select the GAMEPAD to use. |
 | Host / Port | The IP address of StellarMate OS and the port configured for the RemoteINDIPAD receiver (default: 50007). |
 | Logs - Heartbeat | Display transmitted heartbeats in the console. |
+| Logs - Requests | Display JSON packets sent to the receiver in the console. |
+| Logs - Word Wrap | Wrap console log lines to the window width. |
 | Focus step | The step size for focus in/out operations. |
 | Connect / Disconnect | Connect to or disconnect from the RemoteINDIPAD receiver. |
 | Edit Mapping | Open the INDIPAD Mapping Editor. |
@@ -195,6 +197,11 @@ RemoteINDIPAD receiver converts the "Actions" received from RemoteINDIPAD sender
 | Filter Wheel | The name of an available filter wheel INDI driver. Select one from the list when multiple drivers are available. The number after the INDI driver name is the number of filter wheel slots. |
 | Rotator | The name of an available rotator INDI driver. Select one from the list when multiple drivers are available. |
 | Listening IP / Port | The IP address and port of the network interface used for connections. The default IP address is 0.0.0.0, which uses all network interfaces. The default port is 50007. |
+| Logs - Heartbeat | Display received heartbeats in the console. |
+| Logs - Requests | Display JSON packets received from the sender in the console. |
+| Logs - Actions | Display operation logs beginning with `action`, `dispatch`, or `executed` in the console. |
+| Logs - D-BUS | Display D-BUS calls and returned results in the console. |
+| Logs - Word Wrap | Wrap console log lines to the window width. |
 | Scan INDI | Scan for available INDI drivers and populate each driver list. |
 | Restart | Restart the listener. Use this after changing the IP address or port. |
 | Close | Close RemoteINDIPAD receiver. |

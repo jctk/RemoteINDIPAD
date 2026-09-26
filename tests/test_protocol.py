@@ -435,6 +435,7 @@ class ProtocolTests(unittest.TestCase):
             "host": "localhost",
             "port": 50007,
             "heartbeat": False,
+            "requests": True,
             "word_wrap": False,
             "focus_step": 250,
             "deadzone": 0.6,
@@ -446,24 +447,29 @@ class ProtocolTests(unittest.TestCase):
             loaded = sender.load_gui_settings(path)
             self.assertEqual(loaded["focus_step"], 250)
             self.assertEqual(loaded["deadzone"], 0.6)
+            self.assertTrue(loaded["requests"])
             self.assertFalse(loaded["word_wrap"])
         finally:
             if path.exists():
                 path.unlink()
 
     def test_debug_json_output_reserves_an_own_update_area(self):
+        sender.set_request_logging(True)
         sender._DEBUG_JSON_CURSOR_SAVED = False
         sender._DEBUG_JSON_LAST_LINES = 0
         stream = io.StringIO()
-        with redirect_stdout(stream):
-            sender.print_debug_json("json", {"axis_1": 0.5, "button_0": True})
-            first_output = stream.getvalue()
-            self.assertIn("\x1b[s", first_output)
-            self.assertNotIn("A\r", first_output)
-            sender.print_debug_json("json", {"axis_1": 0.6, "button_0": False})
-            second_output = stream.getvalue()
-            self.assertIn("\x1b[u", second_output)
-        self.assertTrue(sender._DEBUG_JSON_CURSOR_SAVED)
+        try:
+            with redirect_stdout(stream):
+                sender.print_debug_json("json", {"axis_1": 0.5, "button_0": True})
+                first_output = stream.getvalue()
+                self.assertIn("\x1b[s", first_output)
+                self.assertNotIn("A\r", first_output)
+                sender.print_debug_json("json", {"axis_1": 0.6, "button_0": False})
+                second_output = stream.getvalue()
+                self.assertIn("\x1b[u", second_output)
+            self.assertTrue(sender._DEBUG_JSON_CURSOR_SAVED)
+        finally:
+            sender.set_request_logging(False)
 
     def test_gamepad_name_is_exposed_for_startup_status(self):
         class FakeJoy:
@@ -1079,10 +1085,16 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("host", defaults)
         self.assertIn("port", defaults)
         self.assertIn("heartbeat", defaults)
+        self.assertIn("requests", defaults)
+        self.assertIn("actions", defaults)
+        self.assertIn("dbus", defaults)
         self.assertIn("word_wrap", defaults)
         self.assertEqual(defaults["host"], "0.0.0.0")
         self.assertEqual(defaults["port"], 50007)
         self.assertFalse(defaults["heartbeat"])
+        self.assertFalse(defaults["requests"])
+        self.assertFalse(defaults["actions"])
+        self.assertFalse(defaults["dbus"])
         self.assertFalse(defaults["word_wrap"])
 
     def test_receiver_gui_word_wrap_setting_round_trips(self):
@@ -1091,6 +1103,27 @@ class ProtocolTests(unittest.TestCase):
             receiver.save_gui_settings({"word_wrap": False}, path)
             loaded = receiver.load_gui_settings(path)
             self.assertFalse(loaded["word_wrap"])
+        finally:
+            if path.exists():
+                path.unlink()
+
+    def test_receiver_gui_dbus_setting_round_trips(self):
+        path = Path("test_receiver_gui_settings.json")
+        try:
+            receiver.save_gui_settings({"dbus": True}, path)
+            loaded = receiver.load_gui_settings(path)
+            self.assertTrue(loaded["dbus"])
+        finally:
+            if path.exists():
+                path.unlink()
+
+    def test_receiver_gui_request_and_action_settings_round_trip(self):
+        path = Path("test_receiver_gui_settings.json")
+        try:
+            receiver.save_gui_settings({"requests": True, "actions": True}, path)
+            loaded = receiver.load_gui_settings(path)
+            self.assertTrue(loaded["requests"])
+            self.assertTrue(loaded["actions"])
         finally:
             if path.exists():
                 path.unlink()
@@ -1293,10 +1326,14 @@ class ProtocolTests(unittest.TestCase):
             self.assertEqual(sender.resolve_gamepad_selection(names, None), 1)
 
     def test_receiver_dispatches_abstract_actions_as_debug_entries(self):
-        with patch("builtins.print") as mocked_print:
-            receiver.dispatch_abstract_action("MOUNT_NORTH", True, "dpad")
-            receiver.dispatch_abstract_action("MOUNT_STOP", False, "dpad")
-            receiver.dispatch_abstract_action("SKYMAP_MOVE", True, "left_stick")
+        receiver.set_action_logging(True)
+        try:
+            with patch("builtins.print") as mocked_print:
+                receiver.dispatch_abstract_action("MOUNT_NORTH", True, "dpad")
+                receiver.dispatch_abstract_action("MOUNT_STOP", False, "dpad")
+                receiver.dispatch_abstract_action("SKYMAP_MOVE", True, "left_stick")
+        finally:
+            receiver.set_action_logging(False)
 
         printed = "\n".join(call.args[0] for call in mocked_print.call_args_list if call.args)
         self.assertIn("MOUNT_NORTH", printed)

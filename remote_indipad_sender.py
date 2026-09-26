@@ -93,6 +93,12 @@ AXIS_STATES = ("NEGATIVE", "CENTER", "POSITIVE")
 
 _DEBUG_JSON_CURSOR_SAVED = False
 _DEBUG_JSON_LAST_LINES = 0
+REQUESTS_LOG_ENABLED = False
+
+
+def set_request_logging(enabled: bool) -> None:
+    global REQUESTS_LOG_ENABLED
+    REQUESTS_LOG_ENABLED = bool(enabled)
 
 
 def get_device_guid(joy) -> str:
@@ -363,6 +369,7 @@ def load_gui_settings(path: str | Path | None = None):
         "host": "localhost",
         "port": 50007,
         "heartbeat": False,
+        "requests": False,
         "word_wrap": False,
         "focus_step": 100,
         "deadzone": DEADZONE,
@@ -412,6 +419,7 @@ def load_gui_settings(path: str | Path | None = None):
         "host": str(host) if host is not None else "localhost",
         "port": port_value,
         "heartbeat": bool(heartbeat),
+        "requests": bool(loaded.get("requests", False)),
         "word_wrap": bool(loaded.get("word_wrap", False)),
         "focus_step": focus_step,
         "deadzone": deadzone,
@@ -440,6 +448,7 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         "host": str(settings.get("host", "localhost") or "localhost"),
         "port": int(settings.get("port", 50007) or 50007),
         "heartbeat": bool(settings.get("heartbeat", False)),
+        "requests": bool(settings.get("requests", False)),
         "word_wrap": bool(settings.get("word_wrap", False)),
         "focus_step": _clamp_focus_step(settings.get("focus_step", 100), default=100),
         "deadzone": _clamp_deadzone(settings.get("deadzone", DEADZONE)),
@@ -654,6 +663,8 @@ def format_debug_json(value) -> str:
 
 
 def print_debug_json(label: str, value) -> None:
+    if label == "json" and not REQUESTS_LOG_ENABLED:
+        return
     global _DEBUG_JSON_CURSOR_SAVED, _DEBUG_JSON_LAST_LINES
 
     rendered = format_debug_json(value)
@@ -1201,6 +1212,7 @@ class SenderWorker(QObject):
         action_map: dict | None = None,
         focus_step: int = 100,
         deadzone: float = DEADZONE,
+        log_requests: bool = False,
         focus_step_changed_callback=None,
     ):
         super().__init__()
@@ -1215,6 +1227,7 @@ class SenderWorker(QObject):
         )
         self._focus_step = _clamp_focus_step(focus_step, default=100)
         self._deadzone = _clamp_deadzone(deadzone)
+        self.log_requests = bool(log_requests)
         self._focus_step_changed_callback = focus_step_changed_callback
         self._stop_event = threading.Event()
         self._socket = None
@@ -1313,13 +1326,14 @@ class SenderWorker(QObject):
                         )
                         packet = protocol.serialize_message(message)
                         self._socket.sendall((packet + "\n").encode("utf-8"))
-                        self._safe_emit(
-                            self.log_received,
-                            append_protocol_log_time(
-                                json.dumps(message, ensure_ascii=False, separators=(",", ":")),
-                                message,
-                            ),
-                        )
+                        if self.log_requests:
+                            self._safe_emit(
+                                self.log_received,
+                                append_protocol_log_time(
+                                    json.dumps(message, ensure_ascii=False, separators=(",", ":")),
+                                    message,
+                                ),
+                            )
                     previous_dpad = dpad.copy()
                     previous_buttons = buttons.copy()
                     previous_axes = axes.copy()
@@ -1379,6 +1393,7 @@ class IndipadWindow(QMainWindow):
         self.worker_thread = None
         self.mapping_editor = None
         self.gui_settings = load_gui_settings()
+        set_request_logging(bool(self.gui_settings.get("requests", False)))
         geometry = self.gui_settings.get("window_geometry", {})
         if all(key in geometry for key in ("x", "y", "width", "height")):
             width = max(300, geometry["width"])
@@ -1398,6 +1413,8 @@ class IndipadWindow(QMainWindow):
         self.port_edit = QLineEdit(str(self.gui_settings["port"]))
         self.heartbeat_checkbox = QCheckBox("Heartbeat")
         self.heartbeat_checkbox.setChecked(bool(self.gui_settings["heartbeat"]))
+        self.requests_checkbox = QCheckBox("Requests")
+        self.requests_checkbox.setChecked(bool(self.gui_settings.get("requests", False)))
         self.word_wrap_checkbox = QCheckBox("Word Wrap")
         self.word_wrap_checkbox.setChecked(bool(self.gui_settings.get("word_wrap", False)))
         self.focus_step_spin = QSpinBox()
@@ -1413,6 +1430,7 @@ class IndipadWindow(QMainWindow):
         form_layout.addRow("Host / Port", host_port_row)
         logs_row = QHBoxLayout()
         logs_row.addWidget(self.heartbeat_checkbox)
+        logs_row.addWidget(self.requests_checkbox)
         logs_row.addWidget(self.word_wrap_checkbox)
         logs_row.addStretch()
         form_layout.addRow("Logs", logs_row)
@@ -1436,6 +1454,7 @@ class IndipadWindow(QMainWindow):
         )
         self.console.setPlainText(f"INDIPAD console\nINDIPAD Version {VERSION}\n")
         self.word_wrap_checkbox.toggled.connect(self.on_word_wrap_toggled)
+        self.requests_checkbox.toggled.connect(self.on_requests_toggled)
         self.clear_console_button = QPushButton("Clear")
         self.clear_console_button.clicked.connect(self.clear_console_log)
         console_button_row = QHBoxLayout()
@@ -1586,6 +1605,13 @@ class IndipadWindow(QMainWindow):
         self.gui_settings["word_wrap"] = bool(enabled)
         self.save_settings()
 
+    def on_requests_toggled(self, enabled: bool):
+        set_request_logging(enabled)
+        if self.worker is not None:
+            self.worker.log_requests = bool(enabled)
+        self.gui_settings["requests"] = bool(enabled)
+        self.save_settings()
+
     def _apply_focus_step_value(self, value: int):
         clamped = _clamp_focus_step(value, default=100)
         self.gui_settings["focus_step"] = clamped
@@ -1623,6 +1649,7 @@ class IndipadWindow(QMainWindow):
             "host": self.host_edit.text().strip() or "localhost",
             "port": int(self.port_edit.text().strip() or 50007),
             "heartbeat": self.heartbeat_checkbox.isChecked(),
+            "requests": self.requests_checkbox.isChecked(),
             "word_wrap": self.word_wrap_checkbox.isChecked(),
             "focus_step": self.focus_step_spin.value(),
             "deadzone": self.gui_settings.get("deadzone", DEADZONE),
@@ -1942,6 +1969,7 @@ class IndipadWindow(QMainWindow):
             "host": host,
             "port": port,
             "heartbeat": self.heartbeat_checkbox.isChecked(),
+            "requests": self.requests_checkbox.isChecked(),
             "word_wrap": self.word_wrap_checkbox.isChecked(),
             "focus_step": self.focus_step_spin.value(),
             "deadzone": self.gui_settings.get("deadzone", DEADZONE),
@@ -1963,6 +1991,7 @@ class IndipadWindow(QMainWindow):
             action_map=self.gui_settings.get("action_mapping"),
             focus_step=self.focus_step_spin.value(),
             deadzone=self.gui_settings.get("deadzone", DEADZONE),
+            log_requests=self.requests_checkbox.isChecked(),
             focus_step_changed_callback=self._apply_focus_step_value,
         )
         self.worker.status_changed.connect(lambda text: self.log(f"status: {text}"))

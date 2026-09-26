@@ -55,6 +55,9 @@ DEFAULT_GUI_SETTINGS = {
     "host": "0.0.0.0",
     "port": 50007,
     "heartbeat": False,
+    "requests": False,
+    "actions": False,
+    "dbus": False,
     "word_wrap": False,
     "window_geometry": {},
 }
@@ -250,8 +253,10 @@ def extract_dpad_state(payload):
 
 
 def print_debug_json(label: str, value) -> None:
+    if label == "json" and not REQUESTS_LOG_ENABLED:
+        return
     rendered = format_debug_json(value)
-    print(f"{label}: {rendered}{protocol_log_suffix(value)}", flush=True)
+    _log_request(f"{label}: {rendered}{protocol_log_suffix(value)}")
 
 
 def _split_complete_json_lines(buffer: str) -> tuple[list[str], str]:
@@ -287,7 +292,7 @@ class QueueLogHandler:
 
 
 def _debug_dispatch(label: str, action: str, pressed: bool, source: str) -> None:
-    print(f"dispatch: {label} action={action} pressed={pressed} source={source}", flush=True)
+    _log_action(f"dispatch: {label} action={action} pressed={pressed} source={source}")
 
 
 ACTIVE_INDI_DEVICE_NAMES = {"mount": "", "focuser": "", "filter": "", "rotator": ""}
@@ -338,6 +343,65 @@ _INDI_METHOD_NAMES = {
 }
 
 ACTIVE_INDI_SLEW_RATES: dict[str, list[str]] = {}
+DBUS_LOG_ENABLED = False
+ACTIONS_LOG_ENABLED = False
+REQUESTS_LOG_ENABLED = False
+
+
+def set_action_logging(enabled: bool) -> None:
+    global ACTIONS_LOG_ENABLED
+    ACTIONS_LOG_ENABLED = bool(enabled)
+
+
+def set_request_logging(enabled: bool) -> None:
+    global REQUESTS_LOG_ENABLED
+    REQUESTS_LOG_ENABLED = bool(enabled)
+
+
+def _log_action(message: str) -> None:
+    if ACTIONS_LOG_ENABLED:
+        print(message, flush=True)
+
+
+def _log_request(message: str) -> None:
+    if REQUESTS_LOG_ENABLED:
+        print(message, flush=True)
+
+
+def set_dbus_logging(enabled: bool) -> None:
+    global DBUS_LOG_ENABLED
+    DBUS_LOG_ENABLED = bool(enabled)
+
+
+def _log_dbus(message: str) -> None:
+    if DBUS_LOG_ENABLED:
+        print(f"D-BUS {message}", flush=True)
+
+
+class _LoggedDbusInterface:
+    def __init__(self, interface):
+        self._interface = interface
+
+    def __getattr__(self, name):
+        method = getattr(self._interface, name)
+        if not callable(method):
+            return method
+
+        async def logged_method(*args, **kwargs):
+            _log_dbus(f"call {name} args={args!r} kwargs={kwargs!r}")
+            try:
+                result = await method(*args, **kwargs)
+            except Exception as exc:
+                _log_dbus(f"error {name}: {exc!r}")
+                raise
+            _log_dbus(f"result {name}: {_dbus_value(result)!r}")
+            return result
+
+        return logged_method
+
+
+def _get_logged_dbus_interface(proxy, interface_name: str):
+    return _LoggedDbusInterface(proxy.get_interface(interface_name))
 
 
 def _check_indi_call_result(method_name: str, args: tuple, result) -> None:
@@ -357,7 +421,7 @@ async def _run_indi_calls(calls: list[tuple[str, tuple]]):
     try:
         introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
         proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
-        interface = proxy.get_interface("org.kde.kstars.INDI")
+        interface = _get_logged_dbus_interface(proxy, "org.kde.kstars.INDI")
         results = []
         for method_name, args in calls:
             method = getattr(interface, _INDI_METHOD_NAMES[method_name])
@@ -425,7 +489,7 @@ async def _fetch_mount_slew_rates_async(driver_name: str) -> list[str]:
     try:
         introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
         proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
-        interface = proxy.get_interface("org.kde.kstars.INDI")
+        interface = _get_logged_dbus_interface(proxy, "org.kde.kstars.INDI")
 
         method = getattr(interface, "call_get_properties", None)
         if method is None:
@@ -490,7 +554,7 @@ async def _get_mount_slew_switch_state_async(driver_name: str, slew_rate: str) -
     try:
         introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
         proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
-        interface = proxy.get_interface("org.kde.kstars.INDI")
+        interface = _get_logged_dbus_interface(proxy, "org.kde.kstars.INDI")
 
         method = getattr(interface, "call_get_switch", None)
         if method is None:
@@ -541,7 +605,7 @@ def set_mount_slew_rate(driver_name: str, slew_rate: str) -> bool:
         print(f"TELESCOPE_SLEW_RATE/{slew_rate} D-Bus call error: {exc}", flush=True)
         return False
 
-    print(f"set mount slew rate to {slew_rate} on {driver_name}", flush=True)
+    _log_action(f"set mount slew rate to {slew_rate} on {driver_name}")
     return True
 
 # Helper for building the D-Bus calls required to execute a focus action.
@@ -587,7 +651,7 @@ def execute_focus_action(direction: str, driver_name: str | None = None, step: i
         print(f"{direction} D-Bus call error: {exc}", flush=True)
         return
 
-    print(f"executed {direction} on {target_name}", flush=True)
+    _log_action(f"executed {direction} on {target_name}")
 
 # Helper for executing a filter wheel action asynchronously.
 async def _execute_filterwheel_action_async(driver_name: str, direction: str):
@@ -600,7 +664,7 @@ async def _execute_filterwheel_action_async(driver_name: str, direction: str):
     try:
         introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
         proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
-        interface = proxy.get_interface("org.kde.kstars.INDI")
+        interface = _get_logged_dbus_interface(proxy, "org.kde.kstars.INDI")
 
         slot_count = 0
         for slot_index in range(1, 11):
@@ -720,7 +784,7 @@ def execute_filterwheel_action(direction: str, driver_name: str | None = None) -
         print(f"{direction} ignored; slot {current_slot} already at limit", flush=True)
         return
 
-    print(f"executed {direction} on {target_name}: slot {current_slot} -> {target_slot}", flush=True)
+    _log_action(f"executed {direction} on {target_name}: slot {current_slot} -> {target_slot}")
 
 # Helper for normalizing the target angle of a rotator action.
 def normalize_rotator_target_angle(current_angle, delta_angle, max_rotation=360.0) -> float:
@@ -758,7 +822,7 @@ async def _execute_rotator_action_async(driver_name: str, direction: str, angle:
     try:
         introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
         proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
-        interface = proxy.get_interface("org.kde.kstars.INDI")
+        interface = _get_logged_dbus_interface(proxy, "org.kde.kstars.INDI")
 
         try:
             state_result = await interface.call_get_property_state(driver_name, "ABS_ROTATOR_ANGLE")
@@ -830,7 +894,7 @@ def read_rotator_state(driver_name: str | None = None) -> str:
         try:
             introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
             proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
-            interface = proxy.get_interface("org.kde.kstars.INDI")
+            interface = _get_logged_dbus_interface(proxy, "org.kde.kstars.INDI")
             result = await interface.call_get_property_state(target_name, "ABS_ROTATOR_ANGLE")
             value = _dbus_value(result)
             if isinstance(value, (tuple, list)):
@@ -897,9 +961,8 @@ def execute_rotator_action(direction: str, angle: int | float | None = None, dri
         print(f"unable to read current rotator angle for {target_name}", flush=True)
         return None
 
-    print(
+    _log_action(
         f"executed {direction} on {target_name}: angle {current_angle} -> {target_angle} (limit=360)",
-        flush=True,
     )
     return float(target_angle)
 
@@ -914,7 +977,7 @@ async def _execute_rotator_abort_async(driver_name: str):
     try:
         introspection = await bus.introspect("org.kde.kstars", "/KStars/INDI")
         proxy = bus.get_proxy_object("org.kde.kstars", "/KStars/INDI", introspection)
-        interface = proxy.get_interface("org.kde.kstars.INDI")
+        interface = _get_logged_dbus_interface(proxy, "org.kde.kstars.INDI")
 
         set_args = (driver_name, "ROTATOR_ABORT_MOTION", "ABORT", "On")
         try:
@@ -947,7 +1010,7 @@ def execute_rotator_abort(driver_name: str | None = None) -> bool:
         print(f"CAA_ROTATE_ABORT D-Bus call error: {exc}", flush=True)
         return False
 
-    print(f"executed CAA_ROTATE_ABORT on {target_name}", flush=True)
+    _log_action(f"executed CAA_ROTATE_ABORT on {target_name}")
     return bool(result)
 
 # Helper for loading the GUI settings from a JSON file.
@@ -997,6 +1060,9 @@ def load_gui_settings(path: str | Path | None = None):
         "host": str(loaded.get("host", "0.0.0.0") or "0.0.0.0"),
         "port": port_value,
         "heartbeat": bool(loaded.get("heartbeat", False)),
+        "requests": bool(loaded.get("requests", False)),
+        "actions": bool(loaded.get("actions", False)),
+        "dbus": bool(loaded.get("dbus", False)),
         "word_wrap": bool(loaded.get("word_wrap", False)),
         "window_geometry": normalized_geometry,
     }
@@ -1035,6 +1101,9 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         "host": str(settings.get("host", "0.0.0.0") or "0.0.0.0"),
         "port": port_value,
         "heartbeat": bool(settings.get("heartbeat", False)),
+        "requests": bool(settings.get("requests", False)),
+        "actions": bool(settings.get("actions", False)),
+        "dbus": bool(settings.get("dbus", False)),
         "word_wrap": bool(settings.get("word_wrap", False)),
         "window_geometry": normalized_geometry,
     }
@@ -1079,7 +1148,7 @@ async def fetch_indi_device_list():
             try:
                 node_introspection = await bus.introspect("org.kde.kstars", object_path)
                 proxy = bus.get_proxy_object("org.kde.kstars", object_path, node_introspection)
-                properties = proxy.get_interface("org.freedesktop.DBus.Properties")
+                properties = _get_logged_dbus_interface(proxy, "org.freedesktop.DBus.Properties")
                 name_value = _dbus_value(await properties.call_get("org.kde.kstars.INDI.GenericDevice", "name"))
                 interface_value = _dbus_value(await properties.call_get("org.kde.kstars.INDI.GenericDevice", "driverInterface"))
             except Exception:
@@ -1172,6 +1241,9 @@ class ReceiverWindow(QMainWindow):
         self.receiver = Receiver(
             host=self.gui_settings.get("host", HOST),
             port=int(self.gui_settings.get("port", PORT)),
+            log_requests=bool(self.gui_settings.get("requests", False)),
+            log_actions=bool(self.gui_settings.get("actions", False)),
+            log_dbus=bool(self.gui_settings.get("dbus", False)),
             log_callback=self.log_queue.emit,
         )
         self.receiver_thread = None
@@ -1211,6 +1283,12 @@ class ReceiverWindow(QMainWindow):
 
         self.heartbeat_checkbox = QCheckBox("Heartbeat")
         self.heartbeat_checkbox.setChecked(bool(self.gui_settings.get("heartbeat", False)))
+        self.requests_checkbox = QCheckBox("Requests")
+        self.requests_checkbox.setChecked(bool(self.gui_settings.get("requests", False)))
+        self.actions_checkbox = QCheckBox("Actions")
+        self.actions_checkbox.setChecked(bool(self.gui_settings.get("actions", False)))
+        self.dbus_checkbox = QCheckBox("D-BUS")
+        self.dbus_checkbox.setChecked(bool(self.gui_settings.get("dbus", False)))
         self.word_wrap_checkbox = QCheckBox("Word Wrap")
         self.word_wrap_checkbox.setChecked(bool(self.gui_settings.get("word_wrap", False)))
 
@@ -1229,8 +1307,14 @@ class ReceiverWindow(QMainWindow):
         host_port_row.addWidget(self.port_edit)
         form_layout.addRow("Listening IP / Port", host_port_row)
         logs_row = QHBoxLayout()
-        logs_row.addWidget(self.heartbeat_checkbox)
-        logs_row.addWidget(self.word_wrap_checkbox)
+        for checkbox in (
+            self.heartbeat_checkbox,
+            self.requests_checkbox,
+            self.actions_checkbox,
+            self.dbus_checkbox,
+            self.word_wrap_checkbox,
+        ):
+            logs_row.addWidget(checkbox)
         logs_row.addStretch()
         form_layout.addRow("Logs", logs_row)
 
@@ -1270,6 +1354,9 @@ class ReceiverWindow(QMainWindow):
         self.filter_combo.currentIndexChanged.connect(self._refresh_filter_slot_count)
         self.rotator_combo.currentIndexChanged.connect(self._sync_active_indi_devices)
         self.heartbeat_checkbox.toggled.connect(self.on_heartbeat_toggled)
+        self.requests_checkbox.toggled.connect(self.on_requests_toggled)
+        self.actions_checkbox.toggled.connect(self.on_actions_toggled)
+        self.dbus_checkbox.toggled.connect(self.on_dbus_toggled)
         self.start_receiver()
         self.scan_button.clicked.connect(self.on_scan_indi)
         self.restart_button.clicked.connect(self.on_restart)
@@ -1355,6 +1442,9 @@ class ReceiverWindow(QMainWindow):
             "host": self.host_edit.text().strip() or "0.0.0.0",
             "port": self.port_edit.text().strip() or "50007",
             "heartbeat": self.heartbeat_checkbox.isChecked(),
+            "requests": self.requests_checkbox.isChecked(),
+            "actions": self.actions_checkbox.isChecked(),
+            "dbus": self.dbus_checkbox.isChecked(),
             "word_wrap": self.word_wrap_checkbox.isChecked(),
             "window_geometry": {
                 "x": self.x(),
@@ -1379,6 +1469,27 @@ class ReceiverWindow(QMainWindow):
             self.receiver.log_heartbeat = bool(enabled)
         self.log(f"heartbeat log {'enabled' if enabled else 'disabled'}")
 
+    def on_requests_toggled(self, enabled: bool):
+        set_request_logging(enabled)
+        if hasattr(self, "receiver"):
+            self.receiver.log_requests = bool(enabled)
+        self.save_settings()
+        self.log(f"Requests log {'enabled' if enabled else 'disabled'}")
+
+    def on_actions_toggled(self, enabled: bool):
+        set_action_logging(enabled)
+        if hasattr(self, "receiver"):
+            self.receiver.log_actions = bool(enabled)
+        self.save_settings()
+        self.log(f"Actions log {'enabled' if enabled else 'disabled'}")
+
+    def on_dbus_toggled(self, enabled: bool):
+        set_dbus_logging(enabled)
+        if hasattr(self, "receiver"):
+            self.receiver.log_dbus = bool(enabled)
+        self.save_settings()
+        self.log(f"D-BUS log {'enabled' if enabled else 'disabled'}")
+
     def on_word_wrap_toggled(self, enabled: bool):
         wrap_mode = QTextEdit.LineWrapMode.WidgetWidth if enabled else QTextEdit.LineWrapMode.NoWrap
         self.console.setLineWrapMode(wrap_mode)
@@ -1394,7 +1505,14 @@ class ReceiverWindow(QMainWindow):
         except ValueError:
             self.log("invalid port value; using default 50007")
             port = 50007
-        self.receiver = Receiver(host=host, port=port, log_heartbeat=self.heartbeat_checkbox.isChecked())
+        self.receiver = Receiver(
+            host=host,
+            port=port,
+            log_heartbeat=self.heartbeat_checkbox.isChecked(),
+            log_requests=self.requests_checkbox.isChecked(),
+            log_actions=self.actions_checkbox.isChecked(),
+            log_dbus=self.dbus_checkbox.isChecked(),
+        )
         self.receiver_thread = self.receiver.start()
         self.log(f"listening on {host}:{port}")
 
@@ -1409,7 +1527,14 @@ class ReceiverWindow(QMainWindow):
         except ValueError:
             self.log("invalid port value; using default 50007")
             port = 50007
-        self.receiver = Receiver(host=host, port=port, log_heartbeat=self.heartbeat_checkbox.isChecked())
+        self.receiver = Receiver(
+            host=host,
+            port=port,
+            log_heartbeat=self.heartbeat_checkbox.isChecked(),
+            log_requests=self.requests_checkbox.isChecked(),
+            log_actions=self.actions_checkbox.isChecked(),
+            log_dbus=self.dbus_checkbox.isChecked(),
+        )
         self.receiver_thread = self.receiver.start()
         self.log(f"restarted listener on {host}:{port}")
 
@@ -1514,7 +1639,7 @@ def _execute_mount_switch_action(driver_name: str, property_name: str, switch_na
         print(f"{property_name}/{switch_name} D-Bus call error: {exc}", flush=True)
         return
 
-    print(f"executed mount {property_name}/{switch_name} -> {state} on {driver_name}", flush=True)
+    _log_action(f"executed mount {property_name}/{switch_name} -> {state} on {driver_name}")
 
 # Helper for aborting the current mount motion asynchronously.
 def _execute_mount_abort_action(driver_name: str | None = None) -> None:
@@ -1533,7 +1658,7 @@ def _execute_mount_abort_action(driver_name: str | None = None) -> None:
         print(f"TELESCOPE_ABORT_MOTION D-Bus call error: {exc}", flush=True)
         return
 
-    print(f"executed ABORT on {driver_name}", flush=True)
+    _log_action(f"executed ABORT on {driver_name}")
 
 # Helper for starting the mount abort action in a background thread.
 def _start_mount_abort_background(driver_name: str | None = None) -> None:
@@ -1763,7 +1888,7 @@ async def _get_skymap_rotation_async() -> float:
     try:
         introspection = await bus.introspect("org.kde.kstars", "/KStars")
         proxy = bus.get_proxy_object("org.kde.kstars", "/KStars", introspection)
-        interface = proxy.get_interface("org.kde.kstars")
+        interface = _get_logged_dbus_interface(proxy, "org.kde.kstars")
         method = getattr(interface, "call_get_sky_map_rotation", None)
         if method is None:
             method = getattr(interface, "getSkyMapRotation", None)
@@ -1785,7 +1910,7 @@ async def _set_skymap_rotation_async(angle: float) -> None:
     try:
         introspection = await bus.introspect("org.kde.kstars", "/KStars")
         proxy = bus.get_proxy_object("org.kde.kstars", "/KStars", introspection)
-        interface = proxy.get_interface("org.kde.kstars")
+        interface = _get_logged_dbus_interface(proxy, "org.kde.kstars")
         method = getattr(interface, "call_set_sky_map_rotation", None)
         if method is None:
             method = getattr(interface, "setSkyMapRotation", None)
@@ -1828,7 +1953,7 @@ async def _execute_skymap_zoom_action(method_name: str) -> None:
     try:
         introspection = await bus.introspect("org.kde.kstars", "/KStars")
         proxy = bus.get_proxy_object("org.kde.kstars", "/KStars", introspection)
-        interface = proxy.get_interface("org.kde.kstars")
+        interface = _get_logged_dbus_interface(proxy, "org.kde.kstars")
         method = getattr(interface, f"call_{method_name}", None)
         if method is None:
             method = getattr(interface, method_name, None)
@@ -1925,11 +2050,17 @@ def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown"
 
 # Receiver class for handling incoming connections and dispatching actions.
 class Receiver:
-    def __init__(self, host: str = HOST, port: int = PORT, heartbeat_timeout: float = 5.0, log_heartbeat: bool = False, log_callback=None):
+    def __init__(self, host: str = HOST, port: int = PORT, heartbeat_timeout: float = 5.0, log_heartbeat: bool = False, log_requests: bool = False, log_actions: bool = False, log_dbus: bool = False, log_callback=None):
         self.host = host
         self.port = port
         self.heartbeat_timeout = heartbeat_timeout
         self.log_heartbeat = bool(log_heartbeat)
+        self.log_requests = bool(log_requests)
+        self.log_actions = bool(log_actions)
+        self.log_dbus = bool(log_dbus)
+        set_request_logging(self.log_requests)
+        set_action_logging(self.log_actions)
+        set_dbus_logging(self.log_dbus)
         self.log_callback = log_callback
         self._stop_event = threading.Event()
         self._thread = None
@@ -2053,9 +2184,10 @@ class Receiver:
                                         angle_value = int(angle) if angle is not None else None
                                     except (TypeError, ValueError):
                                         angle_value = None
-                                    self._emit_log(
-                                        f"action: {action} pressed={pressed} source={source} step={step_value} angle={angle_value}"
-                                    )
+                                    if self.log_actions:
+                                        self._emit_log(
+                                            f"action: {action} pressed={pressed} source={source} step={step_value} angle={angle_value}"
+                                        )
                                     dispatch_abstract_action(action, pressed, source, step=step_value, angle=angle_value)
                                 else:
                                     extract_dpad_state(obj)
