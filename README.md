@@ -201,6 +201,31 @@ RemoteINDIPAD receiver converts the "Actions" received from RemoteINDIPAD sender
 | INDIPAD console | Display operation and communication status. |
 | Clear | Clear the console. |
 
+## Abstract Actions
+
+The available abstract Actions are listed below.
+
+| Device category | Abstract action | Operation |
+| - | - | - |
+| Mount | MOUNT_NORTH | Move the mount north while the button is held. |
+| Mount | MOUNT_SOUTH | Move the mount south while the button is held. |
+| Mount | MOUNT_WEST | Move the mount west while the button is held. |
+| Mount | MOUNT_EAST | Move the mount east while the button is held. |
+| Mount | MOUNT_STEP_UP | Increase the mount movement step by one level. |
+| Mount | MOUNT_STEP_DOWN | Decrease the mount movement step by one level. |
+| Mount | MOUNT_STOP | Stop mount movement (stop slewing). |
+| Focuser | FOCUS_IN | Move the focuser's absolute step position closer. |
+| Focuser | FOCUS_OUT | Move the focuser's absolute step position farther away. |
+| Focuser | FOCUS_STEP_UP | Increase the focuser movement step count (5 -> 10 -> 50 -> 100 -> 500). |
+| Focuser | FOCUS_STEP_DOWN | Decrease the focuser movement step count (5 <- 10 <- 50 <- 100 <- 500). |
+| Filter wheel | FILTERWHEEL_PREV | Decrease the filter wheel slot number by one. |
+| Filter wheel | FILTERWHEEL_NEXT | Increase the filter wheel slot number by one. |
+| Rotator | CAA_ROTATE_COUNTER_CLOCKWISE | Rotate the rotator counterclockwise (toward decreasing angles) while the button is held. It rotates by 1 degree five times, then by 5 degrees three times, and by 10 degrees thereafter. |
+| Rotator | CAA_ROTATE_CLOCKWISE | Rotate the rotator clockwise (toward increasing angles) while the button is held. It rotates by 1 degree five times, then by 5 degrees three times, and by 10 degrees thereafter. |
+| Rotator | CAA_ROTATE_ABORT | Stop rotator rotation. |
+| KStars SkyMap | SKYMAP_ZOOM_IN / SKYMAP_ZOOM_OUT | Zoom the SkyMap in or out. |
+| KStars SkyMap | SKYMAP_ROTATE_UP / SKYMAP_ROTATE_DOWN | Rotate the SkyMap by 5 degrees. |
+
 ## FAQ
 
 1. What should I do if running the executable version of RemoteINDIPAD receiver from a terminal displays missing-library messages or errors such as a segmentation violation?

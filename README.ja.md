@@ -201,6 +201,31 @@ RemoteINDIPAD receiverはRemoteINDIPAD senderからNetwork経由で受信した"
 | INDIPAD console | 操作や通信の状態を表示する。 |
 | Clear | コンソールをクリアする。 |
 
+## 抽象化された "Action"
+
+使用できる抽象化された "Action" は下表の通り。
+
+| デバイス区分 | 抽象化操作名 | 操作内容 |
+| - | - | - |
+| マウント | MOUNT_NORTH | ボタンを押してから離すまで、マウントを移動する: 北 |
+| マウント | MOUNT_SOUTH | ボタンを押してから離すまで、マウントを移動する: 南 |
+| マウント | MOUNT_WEST | ボタンを押してから離すまで、マウントを移動する: 西 |
+| マウント | MOUNT_EAST | ボタンを押してから離すまで、マウントを移動する: 東 |
+| マウント | MOUNT_STEP_UP | マウント移動ステップを一段階増やす |
+| マウント | MOUNT_STEP_DOWN | マウント移動ステップ一段階減らす |
+| マウント | MOUNT_STOP | マウント移動停止（Slew停止） |
+| フォーカサー | FOCUS_IN | フォーカサーのステップの絶対位置を近づける |
+| フォーカサー | FOCUS_OUT | フォーカサーのステップの絶対位置を遠くする |
+| フォーカサー | FOCUS_STEP_UP | フォーカサーの移動ステップ数を増やす（5→10→50→100→500） |
+| フォーカサー | FOCUS_STEP_DOWN | フォーカサーの移動ステップ数を減らす（5←10←50←100←500） |
+| フィルターホイール | FILTERWHEEL_PREV | フィルターホイールのスロット番号を一つ減らす |
+| フィルターホイール | FILTERWHEEL_NEXT | フィルターホイールのスロット番号を一つ増やす |
+| ローテーター | CAA_ROTATE_COUNTER_CLOCKWISE | ボタンを押してから離すまでローテーターを反時計回り（角度減少方向の回転）に回転させる。ボタンを押している間、最初の1度ずつ5回回転、続けて5度ずつ3回回転、以降は10度ずつ回転。 |
+| ローテーター | CAA_ROTATE_CLOCKWISE | ボタンを押してから離すまでローテーターを時計回り（角度増加方向の回転）に回転させる。ボタンを押している間、最初の1度ずつ5回回転、続けて5度ずつ3回回転、以降は10度ずつ回転。 |
+| ローテーター | CAA_ROTATE_ABORT | ローテーターの回転を停止させる |
+| KStars SkyMap | SKYMAP_ZOOM_IN / SKYMAP_ZOOM_OUT | SkyMap をZoom In、Zoom Out させる。 |
+| KStars SkyMap | SKYMAP_ROTATE_UP / SKYMAP_ROTATE_DOWN | SkyMap を5度回転させる。 |
+
 ## FAQ
 
 1. Terminalから実行ファイル形式のRemoteINDIPAD receiverを実行すると、Teminalにライブラリ不足が表示されたりセグメンテーション バイオレーションなどのエラーが発生する場合の対応は？
