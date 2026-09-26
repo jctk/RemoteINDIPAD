@@ -238,6 +238,9 @@ The available abstract Actions are listed below.
 1. Can RemoteINDIPAD sender run on Linux?
     - It may run if the required Python modules can be installed.
     - Even with the same GAMEPAD, the information obtained may differ from that obtained on Windows.
+1. The RemoteINDIPAD receiver lists the Juwei-17 as a focuser.
+    - The Juwei-17 is currently identified as such because it has multiple attributes in addition to being a mount.
+    - This is because the `driverInterface` for Juwei-17 is set to 141 (10001101), which corresponds to the definitions for WEATHER_INTERFACE, FOCUSER_INTERFACE, GUIDER_INTERFACE, and TELESCOPE_INTERFACE.
 
 ## License
 

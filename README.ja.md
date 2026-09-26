@@ -238,6 +238,9 @@ RemoteINDIPAD receiverはRemoteINDIPAD senderからNetwork経由で受信した"
 1. RemoteINDIPAD sender を Linux で実行できますか？  
     - 必要なpythonモジュールが導入できるなら実行できる可能性があります。
     - 同一のGAMEPADを使用しても取得できる情報がWindowsと異なる場合があります。
+1. RemoteINDIPAD receiverでJuwei-17がFocuserのリストに含まれています。
+    - Juwei-17はマウントの他に複数の属性を持つためそのように判定されて今います。
+    - Juwei-17のdriverInterface は 141(10001101）つまり、WEATHER_INTERFACE, FOCUSER_INTERFACE, GUIDER_INTERFACE, TELESCOPE_INTERFACE として定義されているのが原因です。
 
 ## License
 
