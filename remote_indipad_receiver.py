@@ -20,7 +20,7 @@ except ImportError:  # pragma: no cover - fallback for missing ctypes
 
 try:
     from PySide6.QtCore import QObject, Qt, QTimer
-    from PySide6.QtGui import QFont, QIcon
+    from PySide6.QtGui import QColor, QFont, QIcon, QPalette, QTextCharFormat, QTextCursor
     from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QSizePolicy, QTextEdit, QVBoxLayout, QWidget
 except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is used
     class QObject:
@@ -29,13 +29,14 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
 
     QTimer = None
     QFont = QIcon = QCheckBox = QComboBox = QFormLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QPushButton = QSizePolicy = QTextEdit = QVBoxLayout = QWidget = object
+    QColor = QPalette = QTextCharFormat = QTextCursor = object
     QApplication = None
 
 
 VERSION = "0.9.0"
 HOST = "0.0.0.0"
 PORT = 50007
-# PyInstaller onefile 実行時は __file__ が一時展開先を指すため、実行ファイルの場所を使う。
+# When running PyInstaller onefile, `__file__` points to the temporary extraction directory, so the location of the executable file is used.
 if getattr(sys, "frozen", False):
     _MODULE_DIR = Path(sys.executable).resolve().parent
 elif "__file__" in globals():
@@ -54,6 +55,7 @@ DEFAULT_GUI_SETTINGS = {
     "host": "0.0.0.0",
     "port": 50007,
     "heartbeat": False,
+    "word_wrap": False,
     "window_geometry": {},
 }
 
@@ -101,6 +103,22 @@ def clear_console() -> None:
 
 _ORIGINAL_PRINT = builtins.print
 _LOG_TIMESTAMP_LENGTH = len("0000-00-00 00:00:00.000")
+_ERROR_LOG_PREFIXES = (
+    "error:",
+    "failed",
+    "invalid",
+    "cannot bind",
+    "unable to",
+    "no gamepad available",
+    "no controller is available",
+    "no mount selected",
+    "no focuser selected",
+    "no filter wheel selected",
+    "no rotator selected",
+    "no mount slew rates available",
+    "unknown action:",
+)
+_ERROR_LOG_PHRASES = (" error:", " failed", " ignored", "heartbeat lost")
 
 
 def format_log_timestamp() -> str:
@@ -108,10 +126,58 @@ def format_log_timestamp() -> str:
 
 
 def timestamp_log_message(message: str) -> str:
+    normalized_lines = []
+    for line in str(message).splitlines(keepends=True):
+        ending = ""
+        if line.endswith("\r\n"):
+            line, ending = line[:-2], "\r\n"
+        elif line.endswith(("\n", "\r")):
+            line, ending = line[:-1], line[-1:]
+        if not line.strip():
+            normalized_lines.append(line + ending)
+            continue
+
+        has_timestamp = (
+            len(line) >= _LOG_TIMESTAMP_LENGTH
+            and line[_LOG_TIMESTAMP_LENGTH - 4] == "."
+            and line[4] == "-"
+            and line[7] == "-"
+        )
+        timestamp = line[:_LOG_TIMESTAMP_LENGTH] if has_timestamp else format_log_timestamp()
+        content = line[_LOG_TIMESTAMP_LENGTH:].lstrip() if has_timestamp else line
+        lowered_content = content.lower()
+        has_error_prefix = lowered_content.startswith("error: ")
+        if has_error_prefix:
+            content = content[len("error: ") :]
+            lowered_content = content.lower()
+        is_error = has_error_prefix or lowered_content.startswith(_ERROR_LOG_PREFIXES) or any(
+            phrase in lowered_content for phrase in _ERROR_LOG_PHRASES
+        )
+        if is_error and not content.startswith("[ERROR]"):
+            content = f"[ERROR] {content}"
+        normalized_lines.append(f"{timestamp} {content}{ending}")
+    return "".join(normalized_lines)
+
+
+def append_console_message(console, message: str) -> None:
     text = str(message)
-    if len(text) >= _LOG_TIMESTAMP_LENGTH and text[_LOG_TIMESTAMP_LENGTH - 3] == "." and text[4] == "-" and text[7] == "-":
-        return text
-    return f"{format_log_timestamp()} {text}"
+    lines = text.splitlines()
+    first_line_content = lines[0][_LOG_TIMESTAMP_LENGTH:].lstrip() if lines else ""
+    char_format = QTextCharFormat()
+    if first_line_content.startswith("[ERROR] "):
+        char_format.setForeground(QColor("#ff5c5c"))
+    else:
+        char_format.setForeground(console.palette().color(QPalette.ColorRole.Text))
+
+    cursor = console.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    if not cursor.atBlockStart():
+        cursor.insertBlock()
+    cursor.insertText(text, char_format)
+    if not cursor.atBlockStart():
+        cursor.insertBlock()
+    console.setTextCursor(cursor)
+    console.verticalScrollBar().setValue(console.verticalScrollBar().maximum())
 
 
 def protocol_log_suffix(payload: dict | None) -> str:
@@ -221,7 +287,7 @@ class QueueLogHandler:
 
 
 def _debug_dispatch(label: str, action: str, pressed: bool, source: str) -> None:
-    print(f"[receiver] dispatch: {label} action={action} pressed={pressed} source={source}", flush=True)
+    print(f"dispatch: {label} action={action} pressed={pressed} source={source}", flush=True)
 
 
 ACTIVE_INDI_DEVICE_NAMES = {"mount": "", "focuser": "", "filter": "", "rotator": ""}
@@ -472,10 +538,10 @@ def set_mount_slew_rate(driver_name: str, slew_rate: str) -> bool:
     try:
         asyncio.run(_run_indi_calls(calls))
     except Exception as exc:
-        print(f"[receiver] TELESCOPE_SLEW_RATE/{slew_rate} D-Bus call error: {exc}", flush=True)
+        print(f"TELESCOPE_SLEW_RATE/{slew_rate} D-Bus call error: {exc}", flush=True)
         return False
 
-    print(f"[receiver] set mount slew rate to {slew_rate} on {driver_name}", flush=True)
+    print(f"set mount slew rate to {slew_rate} on {driver_name}", flush=True)
     return True
 
 # Helper for building the D-Bus calls required to execute a focus action.
@@ -511,17 +577,17 @@ def execute_focus_action(direction: str, driver_name: str | None = None, step: i
     direction = str(direction).upper()
     target_name = (driver_name or get_active_indi_device("focuser") or "").strip()
     if not target_name:
-        print(f"[receiver] no focuser selected; cannot execute {direction}", flush=True)
+        print(f"no focuser selected; cannot execute {direction}", flush=True)
         return
 
     calls = build_focus_dbus_calls(target_name, direction, step=step)
     try:
         asyncio.run(_run_indi_calls(calls))
     except Exception as exc:
-        print(f"[receiver] {direction} D-Bus call error: {exc}", flush=True)
+        print(f"{direction} D-Bus call error: {exc}", flush=True)
         return
 
-    print(f"[receiver] executed {direction} on {target_name}", flush=True)
+    print(f"executed {direction} on {target_name}", flush=True)
 
 # Helper for executing a filter wheel action asynchronously.
 async def _execute_filterwheel_action_async(driver_name: str, direction: str):
@@ -542,7 +608,7 @@ async def _execute_filterwheel_action_async(driver_name: str, direction: str):
                 result = await interface.call_get_text(driver_name, "FILTER_NAME", f"FILTER_SLOT_NAME_{slot_index}")
             except Exception as exc:
                 if slot_index == 1:
-                    print(f"[receiver] D-Bus call error: getText(FILTER_NAME, FILTER_SLOT_NAME_1) -> {exc}", flush=True)
+                    print(f"D-Bus call error: getText(FILTER_NAME, FILTER_SLOT_NAME_1) -> {exc}", flush=True)
                 break
 
             result = _dbus_value(result)
@@ -566,7 +632,7 @@ async def _execute_filterwheel_action_async(driver_name: str, direction: str):
         try:
             current_result = await interface.call_get_number(driver_name, "FILTER_SLOT", "FILTER_SLOT_VALUE")
         except Exception as exc:
-            print(f"[receiver] D-Bus call error: getNumber(FILTER_SLOT, FILTER_SLOT_VALUE) -> {exc}", flush=True)
+            print(f"D-Bus call error: getNumber(FILTER_SLOT, FILTER_SLOT_VALUE) -> {exc}", flush=True)
             return None, None, slot_count, False
 
         current_result = _dbus_value(current_result)
@@ -583,7 +649,7 @@ async def _execute_filterwheel_action_async(driver_name: str, direction: str):
         try:
             state_result = await interface.call_get_property_state(driver_name, "FILTER_SLOT")
         except Exception as exc:
-            print(f"[receiver] D-Bus call error: getPropertyState(FILTER_SLOT) -> {exc}", flush=True)
+            print(f"D-Bus call error: getPropertyState(FILTER_SLOT) -> {exc}", flush=True)
             return current_slot, current_slot, slot_count, False
 
         state_value = _dbus_value(state_result)
@@ -629,32 +695,32 @@ def execute_filterwheel_action(direction: str, driver_name: str | None = None) -
     direction = str(direction).upper()
     target_name = (driver_name or get_active_indi_device("filter") or "").strip()
     if not target_name:
-        print(f"[receiver] no filter wheel selected; cannot execute {direction}", flush=True)
+        print(f"no filter wheel selected; cannot execute {direction}", flush=True)
         return
 
     try:
         current_slot, target_slot, slot_count, busy = asyncio.run(_execute_filterwheel_action_async(target_name, direction))
     except Exception as exc:
-        print(f"[receiver] {direction} D-Bus call error: {exc}", flush=True)
+        print(f"{direction} D-Bus call error: {exc}", flush=True)
         return
 
     if slot_count <= 0:
-        print(f"[receiver] unable to determine filter slot count for {target_name}", flush=True)
+        print(f"unable to determine filter slot count for {target_name}", flush=True)
         return
 
     if current_slot is None:
-        print(f"[receiver] unable to read current filter slot for {target_name}", flush=True)
+        print(f"unable to read current filter slot for {target_name}", flush=True)
         return
 
     if busy:
-        print(f"[receiver] {direction} ignored; {target_name} FILTER_SLOT is Busy", flush=True)
+        print(f"{direction} ignored; {target_name} FILTER_SLOT is Busy", flush=True)
         return
 
     if target_slot == current_slot:
-        print(f"[receiver] {direction} ignored; slot {current_slot} already at limit", flush=True)
+        print(f"{direction} ignored; slot {current_slot} already at limit", flush=True)
         return
 
-    print(f"[receiver] executed {direction} on {target_name}: slot {current_slot} -> {target_slot}", flush=True)
+    print(f"executed {direction} on {target_name}: slot {current_slot} -> {target_slot}", flush=True)
 
 # Helper for normalizing the target angle of a rotator action.
 def normalize_rotator_target_angle(current_angle, delta_angle, max_rotation=360.0) -> float:
@@ -697,7 +763,7 @@ async def _execute_rotator_action_async(driver_name: str, direction: str, angle:
         try:
             state_result = await interface.call_get_property_state(driver_name, "ABS_ROTATOR_ANGLE")
         except Exception as exc:
-            print(f"[receiver] D-Bus call error: getPropertyState(ABS_ROTATOR_ANGLE) -> {exc}", flush=True)
+            print(f"D-Bus call error: getPropertyState(ABS_ROTATOR_ANGLE) -> {exc}", flush=True)
             return None, None, 360.0, False
 
         state_value = _dbus_value(state_result)
@@ -709,7 +775,7 @@ async def _execute_rotator_action_async(driver_name: str, direction: str, angle:
         try:
             current_result = await interface.call_get_number(driver_name, "ABS_ROTATOR_ANGLE", "ANGLE")
         except Exception as exc:
-            print(f"[receiver] D-Bus call error: getNumber(ABS_ROTATOR_ANGLE, ANGLE) -> {exc}", flush=True)
+            print(f"D-Bus call error: getNumber(ABS_ROTATOR_ANGLE, ANGLE) -> {exc}", flush=True)
             return None, None, 360.0, False
 
         current_value = _dbus_value(current_result)
@@ -776,7 +842,7 @@ def read_rotator_state(driver_name: str | None = None) -> str:
     try:
         return asyncio.run(_read_state_async())
     except Exception as exc:
-        print(f"[receiver] D-Bus call error: getPropertyState(ABS_ROTATOR_ANGLE) -> {exc}", flush=True)
+        print(f"D-Bus call error: getPropertyState(ABS_ROTATOR_ANGLE) -> {exc}", flush=True)
         return ""
 
 # Helper for running a continuous rotator hold loop in a separate thread.
@@ -811,7 +877,7 @@ def execute_rotator_action(direction: str, angle: int | float | None = None, dri
     direction = str(direction).upper()
     target_name = (driver_name or get_active_indi_device("rotator") or "").strip()
     if not target_name:
-        print(f"[receiver] no rotator selected; cannot execute {direction}", flush=True)
+        print(f"no rotator selected; cannot execute {direction}", flush=True)
         return None
 
     if direction not in {"CAA_ROTATE_COUNTER_CLOCKWISE", "CAA_ROTATE_CLOCKWISE"}:
@@ -820,19 +886,19 @@ def execute_rotator_action(direction: str, angle: int | float | None = None, dri
     try:
         current_angle, target_angle, max_rotation, busy = asyncio.run(_execute_rotator_action_async(target_name, direction, angle))
     except Exception as exc:
-        print(f"[receiver] {direction} D-Bus call error: {exc}", flush=True)
+        print(f"{direction} D-Bus call error: {exc}", flush=True)
         return None
 
     if busy:
-        print(f"[receiver] {direction} ignored; {target_name} ABS_ROTATOR_ANGLE is Busy", flush=True)
+        print(f"{direction} ignored; {target_name} ABS_ROTATOR_ANGLE is Busy", flush=True)
         return None
 
     if current_angle is None:
-        print(f"[receiver] unable to read current rotator angle for {target_name}", flush=True)
+        print(f"unable to read current rotator angle for {target_name}", flush=True)
         return None
 
     print(
-        f"[receiver] executed {direction} on {target_name}: angle {current_angle} -> {target_angle} (limit=360)",
+        f"executed {direction} on {target_name}: angle {current_angle} -> {target_angle} (limit=360)",
         flush=True,
     )
     return float(target_angle)
@@ -872,16 +938,16 @@ async def _execute_rotator_abort_async(driver_name: str):
 def execute_rotator_abort(driver_name: str | None = None) -> bool:
     target_name = (driver_name or get_active_indi_device("rotator") or "").strip()
     if not target_name:
-        print("[receiver] no rotator selected; cannot abort rotation", flush=True)
+        print("no rotator selected; cannot abort rotation", flush=True)
         return False
 
     try:
         result = asyncio.run(_execute_rotator_abort_async(target_name))
     except Exception as exc:
-        print(f"[receiver] CAA_ROTATE_ABORT D-Bus call error: {exc}", flush=True)
+        print(f"CAA_ROTATE_ABORT D-Bus call error: {exc}", flush=True)
         return False
 
-    print(f"[receiver] executed CAA_ROTATE_ABORT on {target_name}", flush=True)
+    print(f"executed CAA_ROTATE_ABORT on {target_name}", flush=True)
     return bool(result)
 
 # Helper for loading the GUI settings from a JSON file.
@@ -931,6 +997,7 @@ def load_gui_settings(path: str | Path | None = None):
         "host": str(loaded.get("host", "0.0.0.0") or "0.0.0.0"),
         "port": port_value,
         "heartbeat": bool(loaded.get("heartbeat", False)),
+        "word_wrap": bool(loaded.get("word_wrap", False)),
         "window_geometry": normalized_geometry,
     }
 
@@ -968,6 +1035,7 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         "host": str(settings.get("host", "0.0.0.0") or "0.0.0.0"),
         "port": port_value,
         "heartbeat": bool(settings.get("heartbeat", False)),
+        "word_wrap": bool(settings.get("word_wrap", False)),
         "window_geometry": normalized_geometry,
     }
     with open(config_path, "w", encoding="utf-8") as handle:
@@ -1143,6 +1211,8 @@ class ReceiverWindow(QMainWindow):
 
         self.heartbeat_checkbox = QCheckBox("Heartbeat")
         self.heartbeat_checkbox.setChecked(bool(self.gui_settings.get("heartbeat", False)))
+        self.word_wrap_checkbox = QCheckBox("Word Wrap")
+        self.word_wrap_checkbox.setChecked(bool(self.gui_settings.get("word_wrap", False)))
 
         filter_row = QHBoxLayout()
         filter_row.setContentsMargins(0, 0, 0, 0)
@@ -1158,7 +1228,11 @@ class ReceiverWindow(QMainWindow):
         host_port_row.addWidget(self.host_edit)
         host_port_row.addWidget(self.port_edit)
         form_layout.addRow("Listening IP / Port", host_port_row)
-        form_layout.addRow("Logs", self.heartbeat_checkbox)
+        logs_row = QHBoxLayout()
+        logs_row.addWidget(self.heartbeat_checkbox)
+        logs_row.addWidget(self.word_wrap_checkbox)
+        logs_row.addStretch()
+        form_layout.addRow("Logs", logs_row)
 
         button_row = QHBoxLayout()
         self.scan_button = QPushButton("Scan INDI")
@@ -1172,7 +1246,13 @@ class ReceiverWindow(QMainWindow):
         self.console = QTextEdit()
         self.console.setReadOnly(True)
         self.console.setFont(QFont("Consolas", 10))
+        self.console.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.console.setLineWrapMode(
+            QTextEdit.LineWrapMode.WidgetWidth if self.word_wrap_checkbox.isChecked()
+            else QTextEdit.LineWrapMode.NoWrap
+        )
         self.console.setPlainText(f"INDIPAD HOST console\nINDIPAD HOST Version {VERSION}\n")
+        self.word_wrap_checkbox.toggled.connect(self.on_word_wrap_toggled)
         self.clear_console_button = QPushButton("Clear")
         self.clear_console_button.clicked.connect(self.clear_console_log)
         console_button_row = QHBoxLayout()
@@ -1198,8 +1278,7 @@ class ReceiverWindow(QMainWindow):
         self.log("Ready")
 
     def _append_log(self, message: str):
-        self.console.append(message)
-        self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+        append_console_message(self.console, timestamp_log_message(message))
 
     def clear_console_log(self):
         self.console.clear()
@@ -1224,7 +1303,7 @@ class ReceiverWindow(QMainWindow):
         try:
             slot_count = get_filter_slot_count(driver_name)
         except Exception as exc:
-            self.log(f"[gui] failed to get filter slot count for {driver_name}: {exc}")
+            self.log(f"failed to get filter slot count for {driver_name}: {exc}")
             self.filter_slots_edit.setText("")
             return
 
@@ -1276,6 +1355,7 @@ class ReceiverWindow(QMainWindow):
             "host": self.host_edit.text().strip() or "0.0.0.0",
             "port": self.port_edit.text().strip() or "50007",
             "heartbeat": self.heartbeat_checkbox.isChecked(),
+            "word_wrap": self.word_wrap_checkbox.isChecked(),
             "window_geometry": {
                 "x": self.x(),
                 "y": self.y(),
@@ -1297,7 +1377,13 @@ class ReceiverWindow(QMainWindow):
     def on_heartbeat_toggled(self, enabled: bool):
         if hasattr(self, "receiver"):
             self.receiver.log_heartbeat = bool(enabled)
-        self.log(f"[gui] heartbeat log {'enabled' if enabled else 'disabled'}")
+        self.log(f"heartbeat log {'enabled' if enabled else 'disabled'}")
+
+    def on_word_wrap_toggled(self, enabled: bool):
+        wrap_mode = QTextEdit.LineWrapMode.WidgetWidth if enabled else QTextEdit.LineWrapMode.NoWrap
+        self.console.setLineWrapMode(wrap_mode)
+        self.gui_settings["word_wrap"] = bool(enabled)
+        self.save_settings()
 
     def start_receiver(self):
         # No save_settings() here: combos still hold placeholder items until the INDI scan completes.
@@ -1306,29 +1392,29 @@ class ReceiverWindow(QMainWindow):
         try:
             port = int(port_text)
         except ValueError:
-            self.log("[gui] invalid port value; using default 50007")
+            self.log("invalid port value; using default 50007")
             port = 50007
         self.receiver = Receiver(host=host, port=port, log_heartbeat=self.heartbeat_checkbox.isChecked())
         self.receiver_thread = self.receiver.start()
-        self.log(f"[gui] listening on {host}:{port}")
+        self.log(f"listening on {host}:{port}")
 
     def restart_receiver(self):
         self.receiver.stop()
         self.save_settings()
-        self.log("[gui] restarting listener...")
+        self.log("restarting listener...")
         host = self.host_edit.text().strip() or "0.0.0.0"
         port_text = self.port_edit.text().strip() or "50007"
         try:
             port = int(port_text)
         except ValueError:
-            self.log("[gui] invalid port value; using default 50007")
+            self.log("invalid port value; using default 50007")
             port = 50007
         self.receiver = Receiver(host=host, port=port, log_heartbeat=self.heartbeat_checkbox.isChecked())
         self.receiver_thread = self.receiver.start()
-        self.log(f"[gui] restarted listener on {host}:{port}")
+        self.log(f"restarted listener on {host}:{port}")
 
     def on_scan_indi(self):
-        self.log("[gui] scanning INDI devices...")
+        self.log("scanning INDI devices...")
 
         def apply_scan_result(result):
             self.mount_combo.clear()
@@ -1362,15 +1448,15 @@ class ReceiverWindow(QMainWindow):
             self.save_settings()
 
             if result.get("mount") or result.get("focuser") or result.get("filter") or result.get("rotator"):
-                self.log("[gui] INDI scan complete")
+                self.log("INDI scan complete")
             else:
-                self.log("[gui] no supported INDI devices found")
+                self.log("no supported INDI devices found")
 
         try:
             result = asyncio.run(fetch_indi_device_list())
             apply_scan_result(result)
         except Exception as exc:
-            self.log(f"[gui] failed to scan INDI devices: {exc}")
+            self.log(f"failed to scan INDI devices: {exc}")
             self.mount_combo.clear(); self.focuser_combo.clear(); self.filter_combo.clear(); self.rotator_combo.clear()
             self.mount_combo.addItems(["Not scanned"])
             self.focuser_combo.addItems(["Not scanned"])
@@ -1414,7 +1500,7 @@ def run_gui():
 def _execute_mount_switch_action(driver_name: str, property_name: str, switch_name: str, enabled: bool) -> None:
     driver_name = str(driver_name or "").strip()
     if not driver_name:
-        print("[receiver] no mount selected; cannot execute mount motion", flush=True)
+        print("no mount selected; cannot execute mount motion", flush=True)
         return
 
     state = "On" if bool(enabled) else "Off"
@@ -1425,16 +1511,16 @@ def _execute_mount_switch_action(driver_name: str, property_name: str, switch_na
     try:
         asyncio.run(_run_indi_calls(calls))
     except Exception as exc:
-        print(f"[receiver] {property_name}/{switch_name} D-Bus call error: {exc}", flush=True)
+        print(f"{property_name}/{switch_name} D-Bus call error: {exc}", flush=True)
         return
 
-    print(f"[receiver] executed mount {property_name}/{switch_name} -> {state} on {driver_name}", flush=True)
+    print(f"executed mount {property_name}/{switch_name} -> {state} on {driver_name}", flush=True)
 
 # Helper for aborting the current mount motion asynchronously.
 def _execute_mount_abort_action(driver_name: str | None = None) -> None:
     driver_name = str(driver_name or get_active_indi_device("mount") or "").strip()
     if not driver_name:
-        print("[receiver] no mount selected; cannot abort slewing", flush=True)
+        print("no mount selected; cannot abort slewing", flush=True)
         return
 
     calls = [
@@ -1444,10 +1530,10 @@ def _execute_mount_abort_action(driver_name: str | None = None) -> None:
     try:
         asyncio.run(_run_indi_calls(calls))
     except Exception as exc:
-        print(f"[receiver] TELESCOPE_ABORT_MOTION D-Bus call error: {exc}", flush=True)
+        print(f"TELESCOPE_ABORT_MOTION D-Bus call error: {exc}", flush=True)
         return
 
-    print(f"[receiver] executed ABORT on {driver_name}", flush=True)
+    print(f"executed ABORT on {driver_name}", flush=True)
 
 # Helper for starting the mount abort action in a background thread.
 def _start_mount_abort_background(driver_name: str | None = None) -> None:
@@ -1528,7 +1614,7 @@ def handle_mount_step_up(pressed: bool, source: str = "button") -> None:
     driver_name = get_active_indi_device("mount")
     rates = get_mount_slew_rates(driver_name)
     if not rates:
-        print(f"[receiver] no mount slew rates available for {driver_name}", flush=True)
+        print(f"no mount slew rates available for {driver_name}", flush=True)
         return
 
     current = get_current_mount_slew_rate(driver_name)
@@ -1548,7 +1634,7 @@ def handle_mount_step_down(pressed: bool, source: str = "button") -> None:
     driver_name = get_active_indi_device("mount")
     rates = get_mount_slew_rates(driver_name)
     if not rates:
-        print(f"[receiver] no mount slew rates available for {driver_name}", flush=True)
+        print(f"no mount slew rates available for {driver_name}", flush=True)
         return
 
     current = get_current_mount_slew_rate(driver_name)
@@ -1729,7 +1815,7 @@ def execute_skymap_rotate(direction: str) -> bool:
         asyncio.run(_set_skymap_rotation_async(next_rotation))
         return True
     except Exception as exc:
-        print(f"[receiver] KStars sky map rotate {direction} D-Bus call error: {exc}", flush=True)
+        print(f"KStars sky map rotate {direction} D-Bus call error: {exc}", flush=True)
         return False
 
 # Helper for executing a sky map zoom action asynchronously.
@@ -1762,7 +1848,7 @@ def execute_skymap_zoom(direction: str) -> bool:
         asyncio.run(_execute_skymap_zoom_action(f"zoom_{direction}"))
         return True
     except Exception as exc:
-        print(f"[receiver] KStars sky map zoom {direction} D-Bus call error: {exc}", flush=True)
+        print(f"KStars sky map zoom {direction} D-Bus call error: {exc}", flush=True)
         return False
 
 # Helper for handling sky map zoom in action.
@@ -1820,7 +1906,7 @@ _DISPATCH_TABLE = {
 def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown", step: int | None = None, angle: int | None = None) -> None:
     handler = _DISPATCH_TABLE.get(action)
     if handler is None:
-        print(f"[receiver] unknown action: {action} pressed={pressed} source={source}", flush=True)
+        print(f"unknown action: {action} pressed={pressed} source={source}", flush=True)
         return
     if action in {"FOCUS_IN", "FOCUS_OUT"}:
         handler(bool(pressed), str(source), step=step)
@@ -1894,12 +1980,12 @@ class Receiver:
                 server.bind((self.host, self.port))
             except OSError as exc:
                 self._emit_log(
-                    f"[receiver] cannot bind {self.host}:{self.port}: {exc}. "
+                    f"cannot bind {self.host}:{self.port}: {exc}. "
                     "Another receiver may already be running on this port. Stop it or use another port."
                 )
                 return
             server.listen(5)
-            self._emit_log(f"[receiver] listening on {self.host}:{self.port}")
+            self._emit_log(f"listening on {self.host}:{self.port}")
 
             while not self._stop_event.is_set():
                 try:
@@ -1911,7 +1997,7 @@ class Receiver:
                     continue
 
                 with conn:
-                    self._emit_log(f"[receiver] connected from {addr}")
+                    self._emit_log(f"connected from {addr}")
                     conn.settimeout(0.5)
                     heartbeat_lost = False
                     last_seen = time.monotonic()
@@ -1922,20 +2008,20 @@ class Receiver:
                         except socket.timeout:
                             if self.heartbeat_is_lost(last_seen, self.heartbeat_timeout):
                                 if not heartbeat_lost:
-                                    self._emit_log("[receiver] heartbeat lost")
+                                    self._emit_log("heartbeat lost")
                                     trigger_heartbeat_emergency_stop()
                                     heartbeat_lost = True
                             continue
                         except OSError:
                             if not heartbeat_lost:
-                                print("[receiver] heartbeat lost", flush=True)
+                                print("heartbeat lost", flush=True)
                                 trigger_heartbeat_emergency_stop()
                                 heartbeat_lost = True
                             break
 
                         if not data:
                             if not heartbeat_lost:
-                                print("[receiver] heartbeat lost", flush=True)
+                                print("heartbeat lost", flush=True)
                                 trigger_heartbeat_emergency_stop()
                                 heartbeat_lost = True
                             break
@@ -1951,7 +2037,7 @@ class Receiver:
                                     last_seen = time.monotonic()
                                     heartbeat_lost = False
                                     if self.log_heartbeat:
-                                        self._emit_log(f"[receiver] heartbeat: {line}", payload=obj)
+                                        self._emit_log(f"heartbeat: {line}", payload=obj)
                                     continue
                                 if obj.get("type") == "action":
                                     action = obj.get("action")
@@ -1968,28 +2054,17 @@ class Receiver:
                                     except (TypeError, ValueError):
                                         angle_value = None
                                     self._emit_log(
-                                        f"[receiver] action: {action} pressed={pressed} source={source} step={step_value} angle={angle_value}"
+                                        f"action: {action} pressed={pressed} source={source} step={step_value} angle={angle_value}"
                                     )
                                     dispatch_abstract_action(action, pressed, source, step=step_value, angle=angle_value)
                                 else:
                                     extract_dpad_state(obj)
                                 last_seen = time.monotonic()
                                 heartbeat_lost = False
-                                print_debug_json("[receiver] json", obj)
+                                print_debug_json("json", obj)
                             except json.JSONDecodeError as exc:
-                                self._emit_log(f"[receiver] invalid json: {line} ({exc})")
+                                self._emit_log(f"invalid json: {line} ({exc})")
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    if "--gui" in args or "-g" in args or not args:
-        raise SystemExit(run_gui())
-
-    receiver = Receiver()
-    receiver.start()
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("[receiver] stopped")
-        receiver.stop()
+    raise SystemExit(run_gui())

@@ -171,7 +171,7 @@ RemoteINDIPAD sender replaces input from a GAMEPAD connected to Windows with abs
 The INDIPAD Mapping Editor is used to edit assignments of abstracted Actions to the GAMEPAD DPAD, buttons, and axes.
 
 - The corresponding list is highlighted when the GAMEPAD is operated.
-- Axes return decimal values from -1 to 1 and are normalized to -1, 0, or 1 based on the default -0.8 to 0.8 thresholds.
+- Axes return decimal values from -1 to 1 and are normalized to -1, 0, or 1 based on the default -0.6 to 0.6 thresholds.
 - Axes are at one of -1, 0, or 1 by default. Note that the triggers on Xbox controllers are at -1 in their default state.
 - The physical number of GAMEPAD DPAD inputs, buttons, and axes may differ from the number reported by the GAMEPAD driver.
 

@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover - fallback for missing joystick package
 
 try:
     from PySide6.QtCore import QObject, Qt, QTimer, Signal
-    from PySide6.QtGui import QColor, QFont, QIcon, QPalette
+    from PySide6.QtGui import QColor, QFont, QIcon, QPalette, QTextCharFormat, QTextCursor
     from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSpinBox, QTextEdit, QVBoxLayout, QWidget, QSizePolicy
 except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is used
     class QObject:
@@ -42,6 +42,7 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
     QTimer = None
     Signal = _FallbackSignal
     QColor = QIcon = QPalette = QFont = QCheckBox = QComboBox = QFormLayout = QGridLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QMessageBox = QPushButton = QSpinBox = QTextEdit = QVBoxLayout = QWidget = object
+    QTextCharFormat = QTextCursor = object
     QApplication = None
 
 import remote_indipad_protocol as protocol
@@ -51,7 +52,7 @@ VERSION = "0.9.0"
 HOST = "127.0.0.1"
 PORT = 50007
 DEADZONE = 0.6
-# PyInstaller onefile 実行時は __file__ が一時展開先を指すため、実行ファイルの場所を使う。
+# When running PyInstaller onefile, `__file__` points to the temporary extraction directory, so the location of the executable file is used.
 if getattr(sys, "frozen", False):
     _MODULE_DIR = Path(sys.executable).resolve().parent
 elif "__file__" in globals():
@@ -362,6 +363,7 @@ def load_gui_settings(path: str | Path | None = None):
         "host": "localhost",
         "port": 50007,
         "heartbeat": False,
+        "word_wrap": False,
         "focus_step": 100,
         "deadzone": DEADZONE,
         "action_mapping": {"controllers": []},
@@ -410,6 +412,7 @@ def load_gui_settings(path: str | Path | None = None):
         "host": str(host) if host is not None else "localhost",
         "port": port_value,
         "heartbeat": bool(heartbeat),
+        "word_wrap": bool(loaded.get("word_wrap", False)),
         "focus_step": focus_step,
         "deadzone": deadzone,
         "action_mapping": normalized_mapping,
@@ -437,6 +440,7 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         "host": str(settings.get("host", "localhost") or "localhost"),
         "port": int(settings.get("port", 50007) or 50007),
         "heartbeat": bool(settings.get("heartbeat", False)),
+        "word_wrap": bool(settings.get("word_wrap", False)),
         "focus_step": _clamp_focus_step(settings.get("focus_step", 100), default=100),
         "deadzone": _clamp_deadzone(settings.get("deadzone", DEADZONE)),
         "action_mapping": _normalize_action_mapping_store(raw_mapping, controller_name=controller_name, controller_guid=controller_guid),
@@ -519,6 +523,22 @@ def clear_console() -> None:
 # Timestamped console print functions
 _ORIGINAL_PRINT = builtins.print
 _LOG_TIMESTAMP_LENGTH = len("0000-00-00 00:00:00.000")
+_ERROR_LOG_PREFIXES = (
+    "error:",
+    "failed",
+    "invalid",
+    "cannot bind",
+    "unable to",
+    "no gamepad available",
+    "no controller is available",
+    "no mount selected",
+    "no focuser selected",
+    "no filter wheel selected",
+    "no rotator selected",
+    "no mount slew rates available",
+    "unknown action:",
+)
+_ERROR_LOG_PHRASES = (" error:", " failed", " ignored", "heartbeat lost")
 
 # Format the current timestamp for log messages
 def format_log_timestamp() -> str:
@@ -526,12 +546,60 @@ def format_log_timestamp() -> str:
 
 # Prepend a timestamp to the log message if it doesn't already have one
 def timestamp_log_message(message: str) -> str:
-    text = str(message)
-    if len(text) >= _LOG_TIMESTAMP_LENGTH and text[_LOG_TIMESTAMP_LENGTH - 3] == "." and text[4] == "-" and text[7] == "-":
-        return text
-    return f"{format_log_timestamp()} {text}"
+    normalized_lines = []
+    for line in str(message).splitlines(keepends=True):
+        ending = ""
+        if line.endswith("\r\n"):
+            line, ending = line[:-2], "\r\n"
+        elif line.endswith(("\n", "\r")):
+            line, ending = line[:-1], line[-1:]
+        if not line.strip():
+            normalized_lines.append(line + ending)
+            continue
+
+        has_timestamp = (
+            len(line) >= _LOG_TIMESTAMP_LENGTH
+            and line[_LOG_TIMESTAMP_LENGTH - 4] == "."
+            and line[4] == "-"
+            and line[7] == "-"
+        )
+        timestamp = line[:_LOG_TIMESTAMP_LENGTH] if has_timestamp else format_log_timestamp()
+        content = line[_LOG_TIMESTAMP_LENGTH:].lstrip() if has_timestamp else line
+        lowered_content = content.lower()
+        has_error_prefix = lowered_content.startswith("error: ")
+        if has_error_prefix:
+            content = content[len("error: ") :]
+            lowered_content = content.lower()
+        is_error = has_error_prefix or lowered_content.startswith(_ERROR_LOG_PREFIXES) or any(
+            phrase in lowered_content for phrase in _ERROR_LOG_PHRASES
+        )
+        if is_error and not content.startswith("[ERROR]"):
+            content = f"[ERROR] {content}"
+        normalized_lines.append(f"{timestamp} {content}{ending}")
+    return "".join(normalized_lines)
 
 # Generate a protocol-specific log suffix based on the payload's timestamp
+def append_console_message(console, message: str) -> None:
+    text = str(message)
+    lines = text.splitlines()
+    first_line_content = lines[0][_LOG_TIMESTAMP_LENGTH:].lstrip() if lines else ""
+    char_format = QTextCharFormat()
+    if first_line_content.startswith("[ERROR] "):
+        char_format.setForeground(QColor("#ff5c5c"))
+    else:
+        char_format.setForeground(console.palette().color(QPalette.ColorRole.Text))
+
+    cursor = console.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    if not cursor.atBlockStart():
+        cursor.insertBlock()
+    cursor.insertText(text, char_format)
+    if not cursor.atBlockStart():
+        cursor.insertBlock()
+    console.setTextCursor(cursor)
+    console.verticalScrollBar().setValue(console.verticalScrollBar().maximum())
+
+
 def protocol_log_suffix(payload: dict | None) -> str:
     if not isinstance(payload, dict):
         return ""
@@ -592,7 +660,7 @@ def print_debug_json(label: str, value) -> None:
     rendered_lines = rendered.splitlines()
     if rendered_lines:
         rendered_lines[-1] += protocol_log_suffix(value)
-    lines = [f"{format_log_timestamp()} {label}:"] + rendered_lines
+    lines = [timestamp_log_message(f"{label}:")] + [timestamp_log_message(line) for line in rendered_lines]
     total_lines = len(lines)
 
     if not _DEBUG_JSON_CURSOR_SAVED:
@@ -829,22 +897,22 @@ def resolve_gamepad_selection(gamepad_names, selected_device: str | None = None)
         raise ValueError(f"Gamepad '{query}' not found. Available: {', '.join(f'{i + 1}: {name}' for i, name in enumerate(names))}")
 
     if len(names) == 1:
-        print(f"[sender] connected gamepad: {names[0]}", flush=True)
+        print(f"connected gamepad: {names[0]}", flush=True)
         return 0
 
-    print("[sender] available gamepads:")
+    print("available gamepads:")
     for index, name in enumerate(names):
         print(f"  [{index + 1}] {name}", flush=True)
 
     while True:
-        response = input("[sender] select gamepad index: ").strip()
+        response = input("select gamepad index: ").strip()
         numeric_index = normalize_index(response)
         if numeric_index is not None:
             return numeric_index
 
         if response.isdigit():
             print(
-                f"[sender] invalid selection: {response}. "
+                f"invalid selection: {response}. "
                 f"Choose a value from 1-{len(names)} or type a gamepad name.",
                 flush=True,
             )
@@ -860,7 +928,7 @@ def resolve_gamepad_selection(gamepad_names, selected_device: str | None = None)
             return match
 
         print(
-            f"[sender] invalid selection: {response}. "
+            f"invalid selection: {response}. "
             f"Choose a value from 1-{len(names)} or type a gamepad name.",
             flush=True,
         )
@@ -1018,7 +1086,7 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
     joy = None
     resolved_action_map = None
     if demo:
-        print("[sender] demo mode enabled", flush=True)
+        print("demo mode enabled", flush=True)
         resolved_action_map = resolve_action_mapping(action_map)
     else:
         try:
@@ -1029,28 +1097,28 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
                 device_name=gamepad_name,
                 device_guid=get_device_guid(joy),
             )
-            print(f"[sender] connected gamepad: {gamepad_name}", flush=True)
+            print(f"connected gamepad: {gamepad_name}", flush=True)
         except RuntimeError as exc:
-            print(f"[sender] no gamepad available: {exc}; switching to demo mode", flush=True)
+            print(f"no gamepad available: {exc}; switching to demo mode", flush=True)
             demo = True
             resolved_action_map = resolve_action_mapping(action_map)
 
     if forced_device:
-        print(f"[sender] forced device profile: {forced_device}", flush=True)
+        print(f"forced device profile: {forced_device}", flush=True)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(2.0)
-        print(f"[sender] connecting to {host}:{port}...", flush=True)
+        print(f"connecting to {host}:{port}...", flush=True)
         try:
             sock.connect((host, port))
         except OSError as exc:
             print(
-                f"[sender] failed to connect to {host}:{port}: {exc}. "
+                f"failed to connect to {host}:{port}: {exc}. "
                 "Make sure the receiver is running and that the port is not already occupied by another process.",
                 flush=True,
             )
             raise
-        print(f"[sender] connected to {host}:{port}", flush=True)
+        print(f"connected to {host}:{port}", flush=True)
 
         step = 0
         last_signature = None
@@ -1067,7 +1135,7 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
                 if protocol.validate_message(heartbeat):
                     packet = protocol.serialize_message(heartbeat)
                     sock.sendall((packet + "\n").encode("utf-8"))
-                    print_debug_json("[sender] heartbeat", heartbeat)
+                    print_debug_json("heartbeat", heartbeat)
                 last_heartbeat = now
 
             if demo:
@@ -1107,7 +1175,7 @@ def send_loop(host: str = HOST, port: int = PORT, interval: float = 0.05, demo: 
                     )
                     if protocol.validate_message(message):
                         packet = protocol.serialize_message(message)
-                        print_debug_json("[sender] json", message)
+                        print_debug_json("json", message)
                         sock.sendall((packet + "\n").encode("utf-8"))
                 previous_dpad = dpad.copy()
                 previous_buttons = buttons.copy()
@@ -1193,7 +1261,7 @@ class SenderWorker(QObject):
                     heartbeat = protocol.build_heartbeat_payload()
                     packet = protocol.serialize_message(heartbeat)
                     self._socket.sendall((packet + "\n").encode("utf-8"))
-                    self._safe_emit(self.log_received, append_protocol_log_time(f"[sender] heartbeat: {packet}", heartbeat))
+                    self._safe_emit(self.log_received, append_protocol_log_time(f"heartbeat: {packet}", heartbeat))
                     last_heartbeat = now
 
                 axes, buttons, dpad = read_gamepad_state(self._joy)
@@ -1267,7 +1335,7 @@ class SenderWorker(QObject):
         except Exception as exc:  # pragma: no cover - runtime behavior
             self._safe_emit(self.connection_changed, f"Error: {exc}")
             self._safe_emit(self.status_changed, "Disconnected")
-            self._safe_emit(self.log_received, f"[sender] error: {exc}")
+            self._safe_emit(self.log_received, f"error: {exc}")
         finally:
             self._safe_emit(self.connection_changed, "Disconnected")
             self._safe_emit(self.status_changed, "Disconnected")
@@ -1330,6 +1398,8 @@ class IndipadWindow(QMainWindow):
         self.port_edit = QLineEdit(str(self.gui_settings["port"]))
         self.heartbeat_checkbox = QCheckBox("Heartbeat")
         self.heartbeat_checkbox.setChecked(bool(self.gui_settings["heartbeat"]))
+        self.word_wrap_checkbox = QCheckBox("Word Wrap")
+        self.word_wrap_checkbox.setChecked(bool(self.gui_settings.get("word_wrap", False)))
         self.focus_step_spin = QSpinBox()
         self.focus_step_spin.setRange(1, 5000)
         self.focus_step_spin.setValue(int(self.gui_settings.get("focus_step", 100)))
@@ -1341,7 +1411,11 @@ class IndipadWindow(QMainWindow):
         host_port_row.addWidget(self.host_edit)
         host_port_row.addWidget(self.port_edit)
         form_layout.addRow("Host / Port", host_port_row)
-        form_layout.addRow("Logs", self.heartbeat_checkbox)
+        logs_row = QHBoxLayout()
+        logs_row.addWidget(self.heartbeat_checkbox)
+        logs_row.addWidget(self.word_wrap_checkbox)
+        logs_row.addStretch()
+        form_layout.addRow("Logs", logs_row)
         form_layout.addRow("Focus step", self.focus_step_spin)
 
         button_row = QHBoxLayout()
@@ -1355,7 +1429,13 @@ class IndipadWindow(QMainWindow):
         self.console = QTextEdit()
         self.console.setReadOnly(True)
         self.console.setFont(QFont("Consolas", 10))
+        self.console.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.console.setLineWrapMode(
+            QTextEdit.LineWrapMode.WidgetWidth if self.word_wrap_checkbox.isChecked()
+            else QTextEdit.LineWrapMode.NoWrap
+        )
         self.console.setPlainText(f"INDIPAD console\nINDIPAD Version {VERSION}\n")
+        self.word_wrap_checkbox.toggled.connect(self.on_word_wrap_toggled)
         self.clear_console_button = QPushButton("Clear")
         self.clear_console_button.clicked.connect(self.clear_console_log)
         console_button_row = QHBoxLayout()
@@ -1495,11 +1575,16 @@ class IndipadWindow(QMainWindow):
         self.log("Ready")
 
     def log(self, message: str):
-        self.console.append(timestamp_log_message(message))
-        self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+        append_console_message(self.console, timestamp_log_message(message))
 
     def clear_console_log(self):
         self.console.clear()
+
+    def on_word_wrap_toggled(self, enabled: bool):
+        wrap_mode = QTextEdit.LineWrapMode.WidgetWidth if enabled else QTextEdit.LineWrapMode.NoWrap
+        self.console.setLineWrapMode(wrap_mode)
+        self.gui_settings["word_wrap"] = bool(enabled)
+        self.save_settings()
 
     def _apply_focus_step_value(self, value: int):
         clamped = _clamp_focus_step(value, default=100)
@@ -1538,6 +1623,7 @@ class IndipadWindow(QMainWindow):
             "host": self.host_edit.text().strip() or "localhost",
             "port": int(self.port_edit.text().strip() or 50007),
             "heartbeat": self.heartbeat_checkbox.isChecked(),
+            "word_wrap": self.word_wrap_checkbox.isChecked(),
             "focus_step": self.focus_step_spin.value(),
             "deadzone": self.gui_settings.get("deadzone", DEADZONE),
             "action_mapping": self.gui_settings.get("action_mapping", {"controllers": []}),
@@ -1569,13 +1655,13 @@ class IndipadWindow(QMainWindow):
 
         device_name = self.controller_combo.currentText()
         if device_name in {"No controller found", "Controller unavailable"}:
-            self.log("[gui] controller change ignored: no controller is available")
+            self.log("controller change ignored: no controller is available")
             return
 
         previous_worker = self.worker
         previous_worker.stop()
         self.worker = None
-        self.log(f"[gui] switching controller to {device_name}")
+        self.log(f"switching controller to {device_name}")
         self.on_connect()
 
     def _start_monitor_preview_timer(self):
@@ -1812,11 +1898,11 @@ class IndipadWindow(QMainWindow):
         except Exception as exc:  # pragma: no cover - runtime behavior
             self.controller_combo.clear()
             self.controller_combo.addItem("Controller unavailable")
-            self.log(f"[gui] controller scan failed: {exc}")
+            self.log(f"controller scan failed: {exc}")
 
     def on_connect(self):
         if self.worker is not None:
-            self.log("[gui] already connected")
+            self.log("already connected")
             return
         if hasattr(self, "_monitor_preview_timer"):
             self._monitor_preview_timer.stop()
@@ -1856,6 +1942,7 @@ class IndipadWindow(QMainWindow):
             "host": host,
             "port": port,
             "heartbeat": self.heartbeat_checkbox.isChecked(),
+            "word_wrap": self.word_wrap_checkbox.isChecked(),
             "focus_step": self.focus_step_spin.value(),
             "deadzone": self.gui_settings.get("deadzone", DEADZONE),
             "action_mapping": self.gui_settings.get("action_mapping", {"controllers": []}),
@@ -1867,7 +1954,7 @@ class IndipadWindow(QMainWindow):
         )
         save_gui_settings(self.gui_settings)
 
-        self.log(f"[gui] connecting to {host}:{port} using {device_name or 'auto'}")
+        self.log(f"connecting to {host}:{port} using {device_name or 'auto'}")
         self.worker = SenderWorker(
             host=host,
             port=port,
@@ -1878,12 +1965,12 @@ class IndipadWindow(QMainWindow):
             deadzone=self.gui_settings.get("deadzone", DEADZONE),
             focus_step_changed_callback=self._apply_focus_step_value,
         )
-        self.worker.status_changed.connect(lambda text: self.log(f"[gui] status: {text}"))
+        self.worker.status_changed.connect(lambda text: self.log(f"status: {text}"))
         self.worker.log_received.connect(self.handle_log_message)
         self.worker.connection_changed.connect(
             lambda text, worker=self.worker: self._handle_connection_update(text, worker)
         )
-        self.worker.connection_changed.connect(lambda text: self.log(f"[gui] {text}"))
+        self.worker.connection_changed.connect(lambda text: self.log(text))
         self.worker.monitor_updated.connect(self.update_monitor_snapshot)
 
         self.worker_thread = threading.Thread(target=self.worker.run, daemon=True)
@@ -1892,7 +1979,7 @@ class IndipadWindow(QMainWindow):
 
     def on_disconnect(self):
         if self.worker is None:
-            self.log("[gui] not connected")
+            self.log("not connected")
             return
         self.worker.stop()
         self.worker = None
@@ -1900,7 +1987,7 @@ class IndipadWindow(QMainWindow):
         self.set_connection_button_state(False)
         if hasattr(self, "_monitor_preview_timer"):
             self._monitor_preview_timer.start()
-        self.log("[gui] disconnected")
+        self.log("disconnected")
 
     def on_close(self):
         self.save_settings()
@@ -2142,42 +2229,9 @@ def run_gui():
 
 if __name__ == "__main__":
     try:
-        args = sys.argv[1:]
-        if "--gui" in args or "-g" in args or not args:
-            raise SystemExit(run_gui())
-
-        host = HOST
-        port = PORT
-        demo = False
-        forced_device = None
-
-        index = 0
-        while index < len(args):
-            arg = args[index]
-            if arg in ("--demo", "-d"):
-                demo = True
-            elif arg in ("--host", "-H"):
-                if index + 1 < len(args):
-                    host = args[index + 1]
-                    index += 1
-            elif arg in ("--port", "-p"):
-                if index + 1 < len(args):
-                    port = int(args[index + 1])
-                    index += 1
-            elif arg in ("--device", "-D"):
-                if index + 1 < len(args):
-                    forced_device = args[index + 1]
-                    index += 1
-            elif not arg.startswith("-"):
-                if host == HOST:
-                    host = arg
-                else:
-                    port = int(arg)
-            index += 1
-
-        send_loop(host=host, port=port, demo=demo, forced_device=forced_device)
+        raise SystemExit(run_gui())
     except KeyboardInterrupt:
-        print("[sender] stopped")
+        print("stopped")
     except Exception as exc:
-        print(f"[sender] error: {exc}")
+        print(f"error: {exc}")
         raise

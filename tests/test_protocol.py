@@ -14,7 +14,7 @@ import remote_indipad_sender as sender
 class ProtocolTests(unittest.TestCase):
     def test_build_payload_has_expected_fields(self):
         payload = protocol.build_payload(
-            axes={"left_x": 0.25, "left_y": -0.5},
+            axes={"axis_1": 0.25, "axis_2": -0.5},
             buttons={"button_0": True, "button_1": False},
             dpad={"dpad_right": True, "dpad_left": False},
             mode="slew",
@@ -23,14 +23,14 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(payload["type"], "axis")
         self.assertEqual(payload["device"], "gamepad")
         self.assertEqual(payload["mode"], "slew")
-        self.assertAlmostEqual(payload["axes"]["left_x"], 0.25)
+        self.assertAlmostEqual(payload["axes"]["axis_1"], 0.25)
         self.assertTrue(payload["dpad"]["dpad_right"])
         self.assertEqual(payload["buttons"]["button_0"], True)
         self.assertEqual(list(payload.keys())[3:6], ["axes", "dpad", "buttons"])
 
     def test_round_trip_serialization(self):
         original = protocol.build_payload(
-            axes={"left_x": 0.0, "left_y": 1.0},
+            axes={"axis_1": 0.0, "axis_2": 1.0},
             buttons={"button_5": True},
             dpad={"dpad_up": False, "dpad_right": True},
             mode="track",
@@ -76,10 +76,45 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(receiver.Receiver.heartbeat_is_lost(now - 5.1, 5.0, now))
 
     def test_debug_json_output_is_single_line(self):
-        rendered = receiver.format_debug_json({"left_x": 0.5, "button_0": True})
+        rendered = receiver.format_debug_json({"axis_1": 0.5, "button_0": True})
         self.assertNotIn("\n", rendered)
-        self.assertIn('"left_x":0.5', rendered)
+        self.assertIn('"axis_1":0.5', rendered)
         self.assertIn('"button_0":true', rendered)
+
+    def test_timestamp_log_message_formats_unprefixed_source_messages(self):
+        timestamp = "2026-09-26 12:34:56.789"
+        for module in (sender, receiver):
+            with patch.object(module, "format_log_timestamp", return_value=timestamp):
+                self.assertEqual(
+                    module.timestamp_log_message(f"{timestamp} listening on 0.0.0.0:50007"),
+                    f"{timestamp} listening on 0.0.0.0:50007",
+                )
+                self.assertEqual(
+                    module.timestamp_log_message("scanning INDI devices...\nReady"),
+                    f"{timestamp} scanning INDI devices...\n{timestamp} Ready",
+                )
+                for message, expected in (
+                    ("error: Connection refused", "Connection refused"),
+                    ("failed to scan INDI devices: dbus-next is required", "failed to scan INDI devices: dbus-next is required"),
+                    ("D-Bus call error: unavailable", "D-Bus call error: unavailable"),
+                    ("heartbeat lost", "heartbeat lost"),
+                ):
+                    self.assertEqual(
+                        module.timestamp_log_message(message),
+                        f"{timestamp} [ERROR] {expected}",
+                    )
+                self.assertEqual(
+                        module.timestamp_log_message(f"{timestamp} invalid port value"),
+                    f"{timestamp} [ERROR] invalid port value",
+                )
+                self.assertEqual(
+                    module.timestamp_log_message("[ERROR] already tagged"),
+                    f"{timestamp} [ERROR] already tagged",
+                )
+                self.assertEqual(
+                    module.timestamp_log_message("[gui] legacy message"),
+                    f"{timestamp} [gui] legacy message",
+                )
 
     def test_debug_json_keeps_numeric_button_order(self):
         rendered = receiver.format_debug_json({
@@ -105,9 +140,9 @@ class ProtocolTests(unittest.TestCase):
         self.assertLess(rendered.index('"button_10"'), rendered.index('"button_11"'))
 
     def test_sender_debug_json_output_is_pretty_and_readable(self):
-        rendered = sender.format_debug_json({"left_x": -0.25, "button_1": False})
+        rendered = sender.format_debug_json({"axis_1": -0.25, "button_1": False})
         self.assertNotIn("\n", rendered)
-        self.assertIn('"left_x":-0.25', rendered)
+        self.assertIn('"axis_1":-0.25', rendered)
         self.assertIn('"button_1":false', rendered)
 
     def test_available_actions_include_filterwheel_actions(self):
@@ -400,6 +435,7 @@ class ProtocolTests(unittest.TestCase):
             "host": "localhost",
             "port": 50007,
             "heartbeat": False,
+            "word_wrap": False,
             "focus_step": 250,
             "deadzone": 0.6,
             "action_mapping": {"button_1": "FOCUS_STEP_UP"},
@@ -410,6 +446,7 @@ class ProtocolTests(unittest.TestCase):
             loaded = sender.load_gui_settings(path)
             self.assertEqual(loaded["focus_step"], 250)
             self.assertEqual(loaded["deadzone"], 0.6)
+            self.assertFalse(loaded["word_wrap"])
         finally:
             if path.exists():
                 path.unlink()
@@ -419,11 +456,11 @@ class ProtocolTests(unittest.TestCase):
         sender._DEBUG_JSON_LAST_LINES = 0
         stream = io.StringIO()
         with redirect_stdout(stream):
-            sender.print_debug_json("[sender] json", {"left_x": 0.5, "button_0": True})
+            sender.print_debug_json("json", {"axis_1": 0.5, "button_0": True})
             first_output = stream.getvalue()
             self.assertIn("\x1b[s", first_output)
             self.assertNotIn("A\r", first_output)
-            sender.print_debug_json("[sender] json", {"left_x": 0.6, "button_0": False})
+            sender.print_debug_json("json", {"axis_1": 0.6, "button_0": False})
             second_output = stream.getvalue()
             self.assertIn("\x1b[u", second_output)
         self.assertTrue(sender._DEBUG_JSON_CURSOR_SAVED)
@@ -458,44 +495,82 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("\x1b[2J", output)
         self.assertIn("\x1b[H", output)
 
-    def test_deadzone_zeroes_idle_values(self):
-        axes = sender.normalize_axes({"left_x": 0.05, "left_y": -0.03, "right_x": 0.0, "right_y": 0.12})
-        self.assertEqual(axes["left_x"], 0.0)
-        self.assertEqual(axes["left_y"], 0.0)
-        self.assertEqual(axes["right_y"], 0.12)
+    def test_deadzone_zeroes_values_below_threshold_for_all_axes(self):
+        deadzone = sender.DEADZONE
+        raw_axes = {
+            "axis_1": deadzone - 0.01,
+            "axis_2": -deadzone + 0.01,
+            "axis_3": deadzone,
+            "axis_4": -deadzone,
+            "axis_5": deadzone + 0.01,
+            "axis_6": -deadzone - 0.01,
+        }
 
-    def test_axis_normalizes_deadzone_and_initial_state(self):
-        self.assertEqual(sender.normalize_axis_value(-0.2, 0.1), -1)
-        self.assertEqual(sender.normalize_axis_value(-0.09, 0.1), 0)
-        self.assertEqual(sender.normalize_axis_value(0.0, 0.1), 0)
-        self.assertEqual(sender.normalize_axis_value(0.12, 0.1), 1)
+        self.assertEqual(sender.normalize_axes(raw_axes), {
+            "axis_1": 0.0,
+            "axis_2": 0.0,
+            "axis_3": deadzone,
+            "axis_4": -deadzone,
+            "axis_5": deadzone + 0.01,
+            "axis_6": -deadzone - 0.01,
+        })
+
+    def test_axis_normalizes_default_deadzone_and_initial_state_for_all_axes(self):
+        deadzone = sender.DEADZONE
+        axis_values = {
+            "axis_1": -deadzone - 0.01,
+            "axis_2": -deadzone,
+            "axis_3": -deadzone + 0.01,
+            "axis_4": deadzone - 0.01,
+            "axis_5": deadzone,
+            "axis_6": deadzone + 0.01,
+        }
+        self.assertEqual(
+            {axis: sender.normalize_axis_value(value) for axis, value in axis_values.items()},
+            {
+                "axis_1": -1,
+                "axis_2": 0,
+                "axis_3": 0,
+                "axis_4": 0,
+                "axis_5": 0,
+                "axis_6": 1,
+            },
+        )
 
         mapping = {
-            "axis_1": {
+            axis: {
                 "NEGATIVE": "SKYMAP_ZOOM_OUT",
                 "CENTER": "",
                 "POSITIVE": "SKYMAP_ZOOM_IN",
             }
+            for axis in axis_values
         }
+        pressed_axes = {axis: -deadzone - 0.01 for axis in axis_values}
         events = sender.build_action_events(
-            axes={"axis_1": -0.2},
+            axes=pressed_axes,
             previous_axes={},
             action_map=mapping,
         )
-        self.assertIn({"action": "SKYMAP_ZOOM_OUT", "pressed": True, "source": "axis"}, events)
+        self.assertEqual(events, [
+            {"action": "SKYMAP_ZOOM_OUT", "pressed": True, "source": "axis"}
+            for _ in axis_values
+        ])
 
+        boundary_axes = {axis: -deadzone for axis in axis_values}
         moved = sender.build_action_events(
-            axes={"axis_1": 0.0},
-            previous_axes={"axis_1": -0.2},
+            axes=boundary_axes,
+            previous_axes=pressed_axes,
             action_map=mapping,
         )
-        self.assertIn({"action": "SKYMAP_ZOOM_OUT", "pressed": False, "source": "axis"}, moved)
-        self.assertNotIn({"action": "", "pressed": True, "source": "axis"}, moved)
+        self.assertEqual(moved, [
+            {"action": "SKYMAP_ZOOM_OUT", "pressed": False, "source": "axis"}
+            for _ in axis_values
+        ])
 
     def test_state_signature_suppresses_idle_updates(self):
-        idle_a = sender.state_signature({"left_x": 0.0, "left_y": 0.0}, {"button_1": False})
-        idle_b = sender.state_signature({"left_x": 0.0, "left_y": 0.0}, {"button_1": False})
-        changed = sender.state_signature({"left_x": 0.1, "left_y": 0.0}, {"button_1": False})
+        idle_a = sender.state_signature({"axis_1": 0.0, "axis_2": 0.0}, {"button_1": False})
+        idle_b = sender.state_signature({"axis_1": 0.0, "axis_2": 0.0}, {"button_1": False})
+        changed = sender.state_signature({"axis_1": 0.1, "axis_2": 0.0}, {"button_1": False})
         self.assertEqual(idle_a, idle_b)
         self.assertNotEqual(idle_a, changed)
 
@@ -546,7 +621,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_receiver_extracts_dpad_state_from_payload(self):
         payload = {
-            "axes": {"left_x": 0.0, "left_y": 0.0},
+            "axes": {"axis_1": 0.0, "axis_2": 0.0},
             "dpad": {"dpad_up": False, "dpad_right": True},
             "buttons": {"button_1": True},
             "mode": "slew",
@@ -626,10 +701,10 @@ class ProtocolTests(unittest.TestCase):
 
     def test_queue_log_handler_buffers_messages_thread_safely(self):
         handler = receiver.QueueLogHandler()
-        handler.emit("[receiver] start")
-        handler.emit("[receiver] action")
+        handler.emit("start")
+        handler.emit("action")
 
-        self.assertEqual(handler.drain(), ["[receiver] start", "[receiver] action"])
+        self.assertEqual(handler.drain(), ["start", "action"])
         self.assertEqual(handler.drain(), [])
 
     def test_build_focus_dbus_calls_uses_selected_driver_name(self):
@@ -1004,9 +1079,21 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("host", defaults)
         self.assertIn("port", defaults)
         self.assertIn("heartbeat", defaults)
+        self.assertIn("word_wrap", defaults)
         self.assertEqual(defaults["host"], "0.0.0.0")
         self.assertEqual(defaults["port"], 50007)
         self.assertFalse(defaults["heartbeat"])
+        self.assertFalse(defaults["word_wrap"])
+
+    def test_receiver_gui_word_wrap_setting_round_trips(self):
+        path = Path("test_receiver_gui_settings.json")
+        try:
+            receiver.save_gui_settings({"word_wrap": False}, path)
+            loaded = receiver.load_gui_settings(path)
+            self.assertFalse(loaded["word_wrap"])
+        finally:
+            if path.exists():
+                path.unlink()
 
     def test_dpad_to_abstract_action_mapping(self):
         action_map = {"dpad_down": "MOUNT_SOUTH"}
@@ -1169,7 +1256,7 @@ class ProtocolTests(unittest.TestCase):
         config = sender.load_axis_config(Path("D:/Projects/RemoteINDIPAD/gamepad_profiles.json"))
         default_mapping = sender.get_default_action_mapping("JC-U3712T", config)
         self.assertEqual(default_mapping["dpad_down"], "MOUNT_SOUTH")
-        self.assertEqual(default_mapping["button_6"], "FOCUS_OUT")
+        self.assertEqual(default_mapping["button_6"], "FILTERWHEEL_NEXT")
 
     def test_idle_state_does_not_emit_action_events(self):
         mapping = sender.build_action_events(
