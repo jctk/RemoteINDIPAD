@@ -1,6 +1,6 @@
 """remote_indipad_receiver.py / remote_indipad_sender.py を PyInstaller でビルドするスクリプト。
 
-実行環境が Windows x64 の場合と Linux aarch64 の場合とで出力先を分けつつ、
+実行環境が Windows x64、Linux x64、Linux aarch64 の場合とで出力先を分けつつ、
 どちらの環境でも両方のスクリプトを onefile / コンソール非表示でビルドする。
 一方のビルドが失敗しても、もう一方のビルドは続行する。
 """
@@ -42,6 +42,13 @@ PLATFORM_SETTINGS = {
         "archive_name": "RemoteINDIPAD-linux-aarch64",
         "archive_format": "tar.gz",
     },
+    "linux-x64": {
+        "release_dir": "linux-x64",
+        "icon": str(ROOT_DIR / "resources" / "icon.icns"),
+        "exe_suffix": "",
+        "archive_name": "RemoteINDIPAD-linux-x64",
+        "archive_format": "tar.gz",
+    },
 }
 
 
@@ -52,6 +59,8 @@ def detect_platform_key() -> str:
 
     if system == "Windows" and machine in ("amd64", "x86_64"):
         return "windows-x64"
+    if system == "Linux" and machine in ("amd64", "x86_64"):
+        return "linux-x64"
     if system == "Linux" and machine in ("aarch64", "arm64"):
         return "linux-aarch64"
 

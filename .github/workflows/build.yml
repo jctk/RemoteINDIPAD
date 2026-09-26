@@ -12,6 +12,7 @@ on:
           - both
           - windows-x64
           - linux-aarch64
+          - linux-x64
 
 jobs:
   build-windows-x64:
@@ -43,7 +44,7 @@ jobs:
           path: release/windows-x64/
           retention-days: 30
 
-  build-linux-aarch64:
+  build-ubuntu-arch64:
     if: ${{ github.event.inputs.target == 'both' || github.event.inputs.target == 'linux-aarch64' }}
     runs-on: ubuntu-24.04-arm
     steps:
@@ -70,4 +71,29 @@ jobs:
         with:
           name: RemoteINDIPAD-linux-aarch64
           path: release/linux-aarch64/
+          retention-days: 30
+
+  build-ubuntu-x64:
+    if: ${{ github.event.inputs.target == 'both' || github.event.inputs.target == 'linux-x64' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Creating a venv and Installing Dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install pygame pyside6 dbus-next pyinstaller
+
+      - name: Run build.py
+        run: .venv/bin/python build.py
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: RemoteINDIPAD-linux-x64
+          path: release/linux-x64/
           retention-days: 30
