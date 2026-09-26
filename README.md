@@ -1,6 +1,7 @@
 # RemoteINDIPAD
 
-[日本語 README](README.ja.md)
+[日本語 README](README.ja.md)  
+The Japanese README is the original documentation. If the English README appears uncertain, refer to the Japanese README.
 
 ![Icon](images/icon.png)
 
@@ -9,8 +10,8 @@ A tool that transmits input from a gamepad connected to Windows over a LAN to KS
 ## Overview
 
 - The project consists of two programs: a sender and a receiver.
-- Sender (Windows): Captures gamepad input, converts it into abstract operations, and sends them over the network.
-- Receiver (Linux): Converts the received abstract operations into D-BUS control commands for KStars / Ekos / INDI to operate the equipment.
+- Sender (Windows): Captures gamepad input, converts it into abstract ”Actions”, and sends them over the network.
+- Receiver (Linux): Converts the received abstract ”Actions” into D-BUS control commands for KStars / Ekos / INDI to operate the equipment.
 
 > ⚠️ This program has been developed almost entirely with GitHub Copilot.
 > Implementations in ways the developer did not anticipate, redundant code, and bugs may remain.
@@ -148,6 +149,8 @@ python remote_indipad_receiver.py
 
 ### RemoteINDIPAD sender
 
+RemoteINDIPAD sender replaces input from a GAMEPAD connected to Windows with abstracted "Actions" and sends them to RemoteINDIPAD receiver over the network.
+
 ![RemoteINDIPAD Sender](images/RemoteINDIPAD_sender.png)
 
 | Item | Description |
@@ -165,7 +168,8 @@ python remote_indipad_receiver.py
 
 ### RemoteINDIPAD sender - INDIPAD Mapping Editor
 
-- Assign abstract actions to the DPAD, buttons, and axes.
+The INDIPAD Mapping Editor is used to edit assignments of abstracted Actions to the GAMEPAD DPAD, buttons, and axes.
+
 - The corresponding list is highlighted when the GAMEPAD is operated.
 - Axes return decimal values from -1 to 1 and are normalized to -1, 0, or 1 based on the default -0.8 to 0.8 thresholds.
 - Axes are at one of -1, 0, or 1 by default. Note that the triggers on Xbox controllers are at -1 in their default state.
@@ -173,7 +177,14 @@ python remote_indipad_receiver.py
 
 ![INDIPAD Mapping Editor](images/INDIPADMappingEditor.png)
 
+| Item | Description |
+| - | - |
+| Save | Save the mapping settings. |
+| Close | Close the INDIPAD Mapping Editor. |
+
 ### RemoteINDIPAD receiver
+
+RemoteINDIPAD receiver converts the "Actions" received from RemoteINDIPAD sender over the network into D-BUS methods and controls KStars / Ekos / INDI.
 
 ![RemoteINDIPAD Receiver](images/RemoteINDIPAD_receiver.png)
 
@@ -189,6 +200,19 @@ python remote_indipad_receiver.py
 | Close | Close RemoteINDIPAD receiver. |
 | INDIPAD console | Display operation and communication status. |
 | Clear | Clear the console. |
+
+## FAQ
+
+1. What should I do if running the executable version of RemoteINDIPAD receiver from a terminal displays missing-library messages or errors such as a segmentation violation?
+    - This may occur because the environment where the executable was created differs from the environment where it is run.
+    - Use the script version, or create an executable in the script-version environment using `build.py`.
+    - Run `python build.py --help` to view the usage information.
+1. Can RemoteINDIPAD receiver run on Windows?
+    - It may run if the required Python modules are installed.
+    However, because Windows does not provide the relevant D-BUS functionality and INDI drivers do not run there, it can only be used to verify the connection between the sender and receiver.
+1. Can RemoteINDIPAD sender run on Linux?
+    - It may run if the required Python modules can be installed.
+    - Even with the same GAMEPAD, the information obtained may differ from that obtained on Windows.
 
 ## License
 

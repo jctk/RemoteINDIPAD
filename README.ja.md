@@ -1,6 +1,7 @@
 # RemoteINDIPAD
 
-[English README](README.md)
+[English README](README.md)  
+原本は日本語版のREADMEです。英語版の内容が疑わしい場合は日本語版を参照してください。
 
 ![Icon](images/icon.png)
 
@@ -9,8 +10,8 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 ## 概要
 
 - 送信側と受信側の二つのプログラムで構成されます。
-- 送信側（Windows）: ゲームパッド入力を取得し、抽象化した操作に変換してネットワーク経由で送信します。
-- 受信側（Linux）: 受信した抽象化操作を KStars / Ekos / INDI への D-BUS 制御コマンドに変換して観測機器を操作します。
+- 送信側（Windows）: ゲームパッド入力を取得し、抽象化した”Action”に変換してネットワーク経由で送信します。
+- 受信側（Linux）: 受信した抽象化”Action”を KStars / Ekos / INDI への D-BUS 制御コマンドに変換して観測機器を操作します。
 
 > ⚠️このプログラムはほぼ GitHub Copilot で開発されています。
 開発者が想像もしていない方法での実装・冗長なコード・不具合などが残されている可能性があります。
@@ -148,6 +149,8 @@ python remote_indipad_receiver.py
 
 ### RemoteINDIPAD sender
 
+RemoteINDIPAD senderはWindowsに接続された GAMEPAD の入力を抽象化された"Action"に置き換え、Networkを経由してRemoteINDIPAD receiverへ送信する。
+
 ![RemoteINDIPAD Sender](images/RemoteINDIPAD_sender.png)
 
 | 項目 | 説明 |
@@ -165,7 +168,8 @@ python remote_indipad_receiver.py
 
 ### RemoteINDIPAD sender- INDIPAD Mapping Editor
 
-- DPAD/ボタン/軸に抽象化されたActionを割り当てる。
+INDIPAD Mapping EditorはGAMEPADのDPAD/ボタン/軸に抽象化された”Action”の割り当てを編集する。
+
 - GAMEPADの操作をすると該当するリストがハイライトする。
 - 軸は-1から1の小数値を返すが、デフォルトで-0.8から0.8を基準に -1, 0, 1 に正規化される。
 - 軸はデフォルトで -1, 0, 1 のいずれかの位置にある。XBox コントローラーのトリガーはデフォルト状態で -1 にあるので注意が必要。
@@ -173,7 +177,14 @@ python remote_indipad_receiver.py
 
 ![INDIPAD Mapping Editor](images/INDIPADMappingEditor.png)
 
+| 項目 | 説明 |
+| - | - |
+| Save | 設定内容を保存する |
+| Close | INDIPAD Mapping Editor を閉じる |
+
 ### RemoteINDIPAD receiver
+
+RemoteINDIPAD receiverはRemoteINDIPAD senderからNetwork経由で受信した"Action"をD-BUSのMethodに置き換えKStars/Ekos/INDIをコントロールする。
 
 ![RemoteINDIPAD Receiver](images/RemoteINDIPAD_receiver.png)
 
@@ -189,6 +200,19 @@ python remote_indipad_receiver.py
 | Close | RemoteINDIPAD receiver を閉じる |
 | INDIPAD console | 操作や通信の状態を表示する。 |
 | Clear | コンソールをクリアする。 |
+
+## FAQ
+
+1. Terminalから実行ファイル形式のRemoteINDIPAD receiverを実行すると、Teminalにライブラリ不足が表示されたりセグメンテーション バイオレーションなどのエラーが発生する場合の対応は？
+    - 実行ファイル形式を作成した環境と実行環境の差異のために発生する場合があります。
+    - スクリプト形式を使用するか、スクリプト形式の環境に含まれる `build.py` を用いて実行ファイルを作成してください。
+    - 使い方は `python build.py --help` で確認してください。
+1. RemoteINDIPAD receiver を Windows で実行できますか？
+    - 必要なpythonモジュールを導入すると実行できる可能性があります。
+    ただしD-BUSに関する仕組みを持たないこと、INDIドライバーが動作しないことから、senderとreceiverの接続確認に限っての利用となります。
+1. RemoteINDIPAD sender を Linux で実行できますか？  
+    - 必要なpythonモジュールが導入できるなら実行できる可能性があります。
+    - 同一のGAMEPADを使用しても取得できる情報がWindowsと異なる場合があります。
 
 ## License
 

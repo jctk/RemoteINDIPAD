@@ -1,11 +1,12 @@
-"""remote_indipad_receiver.py / remote_indipad_sender.py を PyInstaller でビルドするスクリプト。
+"""Build remote_indipad_receiver.py and remote_indipad_sender.py with PyInstaller.
 
-実行環境が Windows x64、Linux x64、Linux aarch64 の場合とで出力先を分けつつ、
-どちらの環境でも両方のスクリプトを onefile / コンソール非表示でビルドする。
-一方のビルドが失敗しても、もう一方のビルドは続行する。
+The output directory varies by whether the build environment is Windows x64,
+Linux x64, or Linux aarch64. Both scripts are built as one-file applications
+with the console hidden. If one build fails, the other build continues.
 """
 
 import hashlib
+import argparse
 import platform
 import shutil
 import subprocess
@@ -17,16 +18,16 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent
 BUILD_DIR = ROOT_DIR / "build"
 
-# ビルド対象スクリプト一覧。
+# Scripts to build.
 SCRIPTS = ["remote_indipad_receiver.py", "remote_indipad_sender.py"]
 
-# 実行ファイルと同じ場所に配置する追加データファイル（スクリプトごと）。
+# Additional data files placed alongside the executables, by script.
 EXTRA_DATA_FILES = {
     "remote_indipad_sender.py": ["gamepad_profiles.json"],
 }
 ICON_DATA_FILE = "resources/icon.png"
 
-# 実行環境ごとの出力先ディレクトリ名・アイコン・配布用アーカイブの設定。
+# Output directory, icon, and distribution archive settings by environment.
 PLATFORM_SETTINGS = {
     "windows-x64": {
         "release_dir": "windows-x64",
@@ -52,8 +53,30 @@ PLATFORM_SETTINGS = {
 }
 
 
+def create_argument_parser() -> argparse.ArgumentParser:
+    """Create the command-line argument parser."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Build the RemoteINDIPAD receiver and sender as standalone "
+            "PyInstaller applications."
+        ),
+        epilog=(
+            "The build platform is detected automatically. The executables and "
+            "gamepad_profiles.json are saved under release/<platform>/, where "
+            "<platform> is windows-x64, linux-x64, or linux-aarch64. The "
+            "distribution archive and its SHA256 checksum are saved in the "
+            "same directory. Windows builds produce a ZIP archive; Linux "
+            "builds produce a tar.gz archive. PyInstaller must be installed in "
+            "the Python environment used to run this script. If one script "
+            "fails to build, the other script continues, but no archive is "
+            "created and the command exits with status 1."
+        ),
+    )
+    return parser
+
+
 def detect_platform_key() -> str:
-    """実行環境から PLATFORM_SETTINGS のキーを判定する。"""
+    """Determine the PLATFORM_SETTINGS key from the build environment."""
     system = platform.system()
     machine = platform.machine().lower()
 
@@ -64,11 +87,11 @@ def detect_platform_key() -> str:
     if system == "Linux" and machine in ("aarch64", "arm64"):
         return "linux-aarch64"
 
-    raise RuntimeError(f"サポートされていない実行環境です: system={system}, machine={machine}")
+    raise RuntimeError(f"Unsupported build environment: system={system}, machine={machine}")
 
 
 def clear_previous_cache(script_name: str) -> None:
-    """前回ビルドのキャッシュ（build/ と *.spec）を削除する。"""
+    """Remove the previous build cache (build/ and *.spec)."""
     script_stem = Path(script_name).stem
 
     script_build_dir = BUILD_DIR / script_stem
@@ -81,7 +104,7 @@ def clear_previous_cache(script_name: str) -> None:
 
 
 def run_pyinstaller(script_name: str, release_dir: str, icon: str | None) -> bool:
-    """PyInstaller を実行する。成功時は True、失敗時は False を返す。"""
+    """Run PyInstaller and return True on success or False on failure."""
     output_dir = ROOT_DIR / "release" / release_dir
 
     command = [
@@ -105,15 +128,15 @@ def run_pyinstaller(script_name: str, release_dir: str, icon: str | None) -> boo
     if icon:
         command += ["--icon", icon]
 
-    print(f"=== PyInstaller 実行: {script_name} -> {output_dir} ===")
+    print(f"=== Running PyInstaller: {script_name} -> {output_dir} ===")
     result = subprocess.run(command, cwd=ROOT_DIR)
     return result.returncode == 0
 
 
 def copy_extra_data_files(script_name: str, release_dir: str) -> None:
-    """実行ファイルが実行時に読み込む追加データファイルを release へコピーする。
+    """Copy additional data files required at runtime to the release directory.
 
-    既存ファイルは上書きする。
+    Existing files are overwritten.
     """
     output_dir = ROOT_DIR / "release" / release_dir
 
@@ -122,11 +145,11 @@ def copy_extra_data_files(script_name: str, release_dir: str) -> None:
         dst = output_dir / filename
 
         if not src.exists():
-            print(f"警告: {filename} が見つからないためコピーをスキップしました。", file=sys.stderr)
+            print(f"Warning: skipped copying {filename} because it was not found.", file=sys.stderr)
             continue
 
         shutil.copy2(src, dst)
-        print(f"{filename} をコピーしました: {dst}")
+        print(f"Copied {filename}: {dst}")
 
 
 def create_release_archive(
@@ -135,14 +158,14 @@ def create_release_archive(
     archive_name: str,
     archive_format: str,
 ) -> bool:
-    """実行ファイルと追加データファイルをアーカイブにまとめ、SHA256 を保存する。"""
+    """Archive the executables and additional data files, then save the SHA256 hash."""
     output_dir = ROOT_DIR / "release" / release_dir
 
     files_to_archive = []
     for script_name in SCRIPTS:
         exe_path = output_dir / f"{Path(script_name).stem}{exe_suffix}"
         if not exe_path.exists():
-            print(f"エラー: 実行ファイルが見つかりません: {exe_path}", file=sys.stderr)
+            print(f"Error: executable not found: {exe_path}", file=sys.stderr)
             return False
         files_to_archive.append(exe_path)
 
@@ -164,7 +187,7 @@ def create_release_archive(
             for file_path in files_to_archive:
                 archive.add(file_path, arcname=file_path.name)
     else:
-        print(f"エラー: 未対応のアーカイブ形式です: {archive_format}", file=sys.stderr)
+        print(f"Error: unsupported archive format: {archive_format}", file=sys.stderr)
         return False
 
     sha256 = hashlib.sha256()
@@ -174,35 +197,37 @@ def create_release_archive(
 
     hash_path.write_text(f"{sha256.hexdigest()}  {archive_path.name}\n", encoding="utf-8")
 
-    print(f"{archive_path.name} を作成しました: {archive_path}")
-    print(f"SHA256 を保存しました: {hash_path}")
+    print(f"Created {archive_path.name}: {archive_path}")
+    print(f"Saved SHA256 hash: {hash_path}")
     return True
 
 
 def main() -> int:
+    create_argument_parser().parse_args()
+
     platform_key = detect_platform_key()
     settings = PLATFORM_SETTINGS[platform_key]
     release_dir = settings["release_dir"]
     icon = settings["icon"]
 
-    print(f"検出した実行環境: {platform_key}")
+    print(f"Detected build environment: {platform_key}")
 
     failed_scripts = []
 
-    # 一方のスクリプトが失敗しても、残りのスクリプトのビルドは続行する。
+    # Continue building the remaining scripts if one script fails.
     for script_name in SCRIPTS:
         clear_previous_cache(script_name)
 
         success = run_pyinstaller(script_name, release_dir, icon)
         if not success:
-            print(f"エラー: {script_name} の PyInstaller 実行に失敗しました。", file=sys.stderr)
+            print(f"Error: PyInstaller failed for {script_name}.", file=sys.stderr)
             failed_scripts.append(script_name)
         else:
             copy_extra_data_files(script_name, release_dir)
-            print(f"ビルド完了: {script_name}")
+            print(f"Build completed: {script_name}")
 
     if failed_scripts:
-        print(f"失敗したスクリプト: {', '.join(failed_scripts)}", file=sys.stderr)
+        print(f"Failed scripts: {', '.join(failed_scripts)}", file=sys.stderr)
         return 1
 
     archive_ok = create_release_archive(
@@ -212,7 +237,7 @@ def main() -> int:
         settings["archive_format"],
     )
     if not archive_ok:
-        print("エラー: 配布用アーカイブの作成に失敗しました。", file=sys.stderr)
+        print("Error: failed to create the distribution archive.", file=sys.stderr)
         return 1
 
     return 0
