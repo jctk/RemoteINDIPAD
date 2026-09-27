@@ -2,8 +2,10 @@
 
 import json
 import os
+import shutil
 import socket
 import sys
+import sysconfig
 import threading
 import time
 from datetime import datetime
@@ -46,6 +48,7 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
     QApplication = None
 
 import remote_indipad_protocol as protocol
+from remote_indipad_paths import get_installed_package_version, get_user_config_dir
 
 # Configuration and Constants
 VERSION = "0.9.0"
@@ -59,9 +62,25 @@ elif "__file__" in globals():
     _MODULE_DIR = Path(__file__).resolve().parent
 else:
     _MODULE_DIR = Path.cwd()
-_RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", _MODULE_DIR))
+_PACKAGE_VERSION = get_installed_package_version()
+_IS_INSTALLED_PACKAGE = _PACKAGE_VERSION is not None and not getattr(sys, "frozen", False)
+if _IS_INSTALLED_PACKAGE:
+    _PACKAGE_DATA_DIR = Path(sysconfig.get_path("data")) / "share" / "RemoteINDIPAD"
+else:
+    _PACKAGE_DATA_DIR = _MODULE_DIR
+_RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", _PACKAGE_DATA_DIR))
 APP_ICON_PATH = _RESOURCE_DIR / "resources" / "icon.png"
-GUI_SETTINGS_PATH = _MODULE_DIR / "remote_indipad_sender.json"
+_USER_CONFIG_DIR = get_user_config_dir()
+GUI_SETTINGS_PATH = (
+    _USER_CONFIG_DIR / "remote_indipad_sender.json"
+    if _IS_INSTALLED_PACKAGE
+    else _MODULE_DIR / "remote_indipad_sender.json"
+)
+GAMEPAD_PROFILES_PATH = (
+    _USER_CONFIG_DIR / "gamepad_profiles.json"
+    if _IS_INSTALLED_PACKAGE
+    else _MODULE_DIR / "gamepad_profiles.json"
+)
 AVAILABLE_ACTIONS = [
     "",
     "MOUNT_NORTH",
@@ -456,16 +475,40 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         "window_geometry": normalized_geometry,
     }
 
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
+
+
+def _sync_gamepad_profiles() -> None:
+    if not _IS_INSTALLED_PACKAGE:
+        return
+
+    packaged_profiles = _PACKAGE_DATA_DIR / "gamepad_profiles.json"
+    version_marker = _USER_CONFIG_DIR / "gamepad_profiles.version"
+    try:
+        if not packaged_profiles.is_file():
+            return
+        if (
+            GAMEPAD_PROFILES_PATH.is_file()
+            and version_marker.read_text(encoding="utf-8").strip() == _PACKAGE_VERSION
+        ):
+            return
+
+        _USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(packaged_profiles, GAMEPAD_PROFILES_PATH)
+        version_marker.write_text(f"{_PACKAGE_VERSION}\n", encoding="utf-8")
+    except OSError:
+        return
 
 
 def load_axis_config(path: str | Path | None = None):
     if path is not None:
         config_path = Path(path)
     else:
-        config_path = (_MODULE_DIR / "gamepad_profiles.json")
+        _sync_gamepad_profiles()
+        config_path = GAMEPAD_PROFILES_PATH
     config = {"default_device": "", "profiles": {}}
 
     if not config_path.exists():

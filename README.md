@@ -81,6 +81,32 @@ Download `RemoteINDIPAD-windows-x64.zip` for Windows and `RemoteINDIPAD-linux-aa
 
 > ⚠️ Start with conservative movements and verify operation first. In particular, abnormal behavior of a mount or rotator may damage the equipment. Make sure you can stop the equipment at any time.
 
+## pip Wheel (GitHub Releases)
+
+- Wheels are installed directly from GitHub Releases and are not published to PyPI.
+- The wheel installs `remote_indipad_sender`, `remote_indipad_receiver`, and `gamepad_profiles.json`, along with their dependencies. `dbus-next` is not installed on Windows.
+- `v0.9.0` is an example. Replace the release tag and wheel filename with those for the release you want to install.
+
+### Windows (Sender)
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install "RemoteINDIPAD @ https://github.com/jctk/RemoteINDIPAD/releases/download/v0.9.0/remoteindipad-0.9.0-py3-none-any.whl"
+remote_indipad_sender
+```
+
+### Linux (Receiver)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install "RemoteINDIPAD @ https://github.com/jctk/RemoteINDIPAD/releases/download/v0.9.0/remoteindipad-0.9.0-py3-none-any.whl"
+remote_indipad_receiver
+```
+
+- Profiles and GUI settings are stored in the user configuration directory. On the first launch after installing a new wheel version, the packaged profile replaces the previous one; edits are preserved on subsequent launches of that version.
+
 ## Script Format (GitHub Repository)
 
 - The script format is the development repository for RemoteINDIPAD.

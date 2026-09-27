@@ -10,8 +10,10 @@ from datetime import datetime
 import builtins
 from pathlib import Path
 from typing import Optional
+import sysconfig
 
 import remote_indipad_protocol as protocol
+from remote_indipad_paths import get_installed_package_version, get_user_config_dir
 
 try:
     import ctypes
@@ -43,9 +45,20 @@ elif "__file__" in globals():
     _MODULE_DIR = Path(__file__).resolve().parent
 else:
     _MODULE_DIR = Path.cwd()
-_RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", _MODULE_DIR))
+_PACKAGE_VERSION = get_installed_package_version()
+_IS_INSTALLED_PACKAGE = _PACKAGE_VERSION is not None and not getattr(sys, "frozen", False)
+_PACKAGE_DATA_DIR = (
+    Path(sysconfig.get_path("data")) / "share" / "RemoteINDIPAD"
+    if _IS_INSTALLED_PACKAGE
+    else _MODULE_DIR
+)
+_RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", _PACKAGE_DATA_DIR))
 APP_ICON_PATH = _RESOURCE_DIR / "resources" / "icon.png"
-GUI_SETTINGS_PATH = _MODULE_DIR / "remote_indipad_receiver.json"
+GUI_SETTINGS_PATH = (
+    get_user_config_dir() / "remote_indipad_receiver.json"
+    if _IS_INSTALLED_PACKAGE
+    else _MODULE_DIR / "remote_indipad_receiver.json"
+)
 DEFAULT_GUI_SETTINGS = {
     "mount": "",
     "focuser": "",
@@ -1107,6 +1120,7 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         "word_wrap": bool(settings.get("word_wrap", False)),
         "window_geometry": normalized_geometry,
     }
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
         handle.write("\n")

@@ -81,6 +81,32 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 
 > ⚠️最初は控えめな操作で動作を確認してください。特にマウントやローテーターが異常な動作をする場合は機材が損傷する恐れがあります。いつでも機材を停止できるように心がけてください。
 
+## pip wheel 形式（GitHub Releases）
+
+- PyPIには公開せず、wheelをGitHub Releasesから直接インストールします。
+- wheelには`remote_indipad_sender`、`remote_indipad_receiver`、`gamepad_profiles.json`が含まれます。依存パッケージもインストールされますが、Windowsでは`dbus-next`はインストールされません。
+- `v0.9.0`は例です。インストールするReleaseのタグとwheelファイル名に置き換えてください。
+
+### Windows（送信側）
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install "RemoteINDIPAD @ https://github.com/jctk/RemoteINDIPAD/releases/download/v0.9.0/remoteindipad-0.9.0-py3-none-any.whl"
+remote_indipad_sender
+```
+
+### Linux（受信側）
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install "RemoteINDIPAD @ https://github.com/jctk/RemoteINDIPAD/releases/download/v0.9.0/remoteindipad-0.9.0-py3-none-any.whl"
+remote_indipad_receiver
+```
+
+- プロファイルとGUI設定はユーザー設定フォルダーに置かれます。新しいwheelの初回起動時にプロファイルを更新し、同じバージョンでは利用者の変更を保持します。
+
 ## スクリプト形式（GitHubのレポジトリ）
 
 - スクリプト形式は RemoteINDIPAD の開発用のリポジトリです。

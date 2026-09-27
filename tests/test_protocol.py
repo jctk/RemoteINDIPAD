@@ -1,5 +1,6 @@
 import asyncio
 import io
+import tempfile
 import threading
 import unittest
 from contextlib import redirect_stdout
@@ -1308,6 +1309,33 @@ class ProtocolTests(unittest.TestCase):
         finally:
             if original is not None:
                 sender.__dict__["__file__"] = original
+
+    def test_gamepad_profiles_refresh_once_per_installed_version(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            packaged_dir = root / "share" / "RemoteINDIPAD"
+            config_dir = root / "user-config"
+            packaged_dir.mkdir(parents=True)
+            packaged_profiles = packaged_dir / "gamepad_profiles.json"
+            packaged_profiles.write_text('{"profiles":{"version":"0.9.1"}}', encoding="utf-8")
+            user_profiles = config_dir / "gamepad_profiles.json"
+
+            with patch.object(sender, "_IS_INSTALLED_PACKAGE", True), \
+                    patch.object(sender, "_PACKAGE_VERSION", "0.9.1"), \
+                    patch.object(sender, "_PACKAGE_DATA_DIR", packaged_dir), \
+                    patch.object(sender, "_USER_CONFIG_DIR", config_dir), \
+                    patch.object(sender, "GAMEPAD_PROFILES_PATH", user_profiles):
+                sender._sync_gamepad_profiles()
+                self.assertEqual(user_profiles.read_text(encoding="utf-8"), '{"profiles":{"version":"0.9.1"}}')
+
+                user_profiles.write_text("custom profile", encoding="utf-8")
+                sender._sync_gamepad_profiles()
+                self.assertEqual(user_profiles.read_text(encoding="utf-8"), "custom profile")
+
+                packaged_profiles.write_text('{"profiles":{"version":"0.9.2"}}', encoding="utf-8")
+                with patch.object(sender, "_PACKAGE_VERSION", "0.9.2"):
+                    sender._sync_gamepad_profiles()
+                self.assertEqual(user_profiles.read_text(encoding="utf-8"), '{"profiles":{"version":"0.9.2"}}')
 
     def test_resolve_gamepad_selection_by_index_and_name(self):
         names = ["DualSense Wireless Controller", "Xbox Controller"]
