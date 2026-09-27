@@ -32,11 +32,11 @@ jobs:
           .venv\Scripts\pip install --upgrade pip
           .venv\Scripts\pip install pygame pyside6 dbus-next pyinstaller
 
-      - name: Run build.py
+      - name: Run build-pyinstaller.py
         shell: pwsh
         env:
           PYTHONUTF8: "1"
-        run: .venv\Scripts\python build.py
+        run: .venv\Scripts\python build-pyinstaller.py
 
       - uses: actions/upload-artifact@v5
         with:
@@ -64,8 +64,8 @@ jobs:
         run: |
           echo "::warning:: This build artifact is not intended for execution on Raspberry Pi devices. Please do not run the generated executable on Raspberry Pi."
 
-      - name: Run build.py
-        run: .venv/bin/python build.py
+      - name: Run build-pyinstaller.py
+        run: .venv/bin/python build-pyinstaller.py
 
       - uses: actions/upload-artifact@v5
         with:
@@ -89,8 +89,8 @@ jobs:
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install pygame pyside6 dbus-next pyinstaller
 
-      - name: Run build.py
-        run: .venv/bin/python build.py
+      - name: Run build-pyinstaller.py
+        run: .venv/bin/python build-pyinstaller.py
 
       - uses: actions/upload-artifact@v5
         with:
