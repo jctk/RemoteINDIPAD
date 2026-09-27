@@ -48,25 +48,33 @@ A tool that transmits input from a gamepad connected to Windows over a LAN to KS
 
 ## Distribution
 
-- Two distribution formats are available.
-- One is the executable format, and the other is the script format.
-- Use either one of them.
+Three distribution formats are available. Choose whichever suits you best.
 
-## Executable Format
+| Format | Description |
+| - | - |
+| Executable | A single executable created with PyInstaller. It is the easiest option because it requires little setup, but it may fail if the build and runtime environments differ. |
+| Wheel file | A Python package installed with `pip`. This is worth considering if you already have a Python environment. |
+| GitHub repository | Includes the development source code and related files. |
+
+## Using the Executable
 
 - The executable format consists of files created with PyInstaller from the script-format files described below, allowing them to be run as single files.
 - No additional files are required. (This has not been thoroughly verified.)
 - Builds are available for Windows x64 and Linux aarch64.
 - The Linux aarch64 build is intended for Raspberry Pi devices running StellarMate OS and similar systems.
 
-### Download
+### Download the Executable Archive
 
 Download `RemoteINDIPAD-windows-x64.zip` for Windows and `RemoteINDIPAD-linux-aarch64.tar.gz` for StellarMate OS from [Releases](https://github.com/jctk/RemoteINDIPAD/releases).
 
-### Installation
+### Extract the Executable Files
 
 1. On Windows, extract `RemoteINDIPAD-windows-x64.zip`, and place `remote_indipad_sender.exe` and `gamepad_profiles.json` in the same folder of your choice.
 2. On StellarMate OS, extract `RemoteINDIPAD-linux-aarch64.tar.gz`, and place `remote_indipad_receiver` in a folder of your choice.
+
+### Uninstallation
+
+- Delete the files you installed.
 
 ### Usage
 
@@ -81,35 +89,80 @@ Download `RemoteINDIPAD-windows-x64.zip` for Windows and `RemoteINDIPAD-linux-aa
 
 > ⚠️ Start with conservative movements and verify operation first. In particular, abnormal behavior of a mount or rotator may damage the equipment. Make sure you can stop the equipment at any time.
 
-## pip Wheel (GitHub Releases)
+## Wheel File
 
-- Wheels are installed directly from GitHub Releases and are not published to PyPI.
-- The wheel installs `remote_indipad_sender`, `remote_indipad_receiver`, and `gamepad_profiles.json`, along with their dependencies. `dbus-next` is not installed on Windows.
-- `v0.9.0` is an example. Replace the release tag and wheel filename with those for the release you want to install.
+- Install the wheel file with `pip install`.
+- Python must be installed.
+- Required packages are installed when you run `pip install`.
+- If some packages cannot be installed in your environment, creating a venv with a different Python version may help.
 
-### Windows (Sender)
+### Download the Wheel File
+
+Download `remoteindipad-<version>-py3-none-any.whl` from [Releases](https://github.com/jctk/RemoteINDIPAD/releases).
+
+### Install with pip
+
+- Run the following command in an environment with Python installed.
+- If you want to use a venv, create it first as described in [Using a venv (Python virtual environment)](#using-a-venv-python-virtual-environment).
+
+```bash
+pip install remoteindipad-<version>-py3-none-any.whl
+```
+
+- You can also install directly from the wheel URL without downloading the file first.
+
+```bash
+pip install https://github.com/jctk/RemoteINDIPAD/releases/download/<release-tag>/remoteindipad-<version>-py3-none-any.whl
+```
+
+### Using a venv (Python virtual environment)
+
+- Create a venv using one of the following procedures before running `pip install`.
+- After activation, the prompt starts with `(.venv)`.
+
+```bash
+# Create a venv with the current Python version (Linux)
+python -m venv .venv
+source .venv/bin/activate
+```
 
 ```powershell
+# Create a venv with the current Python version (Windows)
 python -m venv .venv
-.venv\Scripts\activate
-python -m pip install "RemoteINDIPAD @ https://github.com/jctk/RemoteINDIPAD/releases/download/v0.9.0/remoteindipad-0.9.0-py3-none-any.whl"
+.venv\Scripts\Activate.ps1
+```
+
+```bash
+# Create a venv with a specified Python version (Linux)
+uv venv --python 3.13 --seed .venv
+source .venv/bin/activate
+```
+
+### Launching the Programs
+
+- For usage instructions other than how to launch the programs, see [Usage](#usage).
+
+#### Windows
+
+```powershell
+# Activate the venv if you are using one.
+.venv\Scripts\Activate.ps1
+# Launch RemoteINDIPAD sender.
 remote_indipad_sender
 ```
 
-### Linux (Receiver)
+#### Linux, such as StellarMate OS
 
 ```bash
-python3 -m venv .venv
+# Activate the venv if you are using one.
 source .venv/bin/activate
-python -m pip install "RemoteINDIPAD @ https://github.com/jctk/RemoteINDIPAD/releases/download/v0.9.0/remoteindipad-0.9.0-py3-none-any.whl"
+# Launch RemoteINDIPAD receiver.
 remote_indipad_receiver
 ```
 
-- Profiles and GUI settings are stored in the user configuration directory. On the first launch after installing a new wheel version, the packaged profile replaces the previous one; edits are preserved on subsequent launches of that version.
+## GitHub Repository
 
-## Script Format (GitHub Repository)
-
-- The script format is the development repository for RemoteINDIPAD.
+- This is the development environment for the RemoteINDIPAD GitHub repository.
 
 ### Requirements
 
@@ -120,13 +173,13 @@ remote_indipad_receiver
   - `pyside6` (GUI)
 - Receiver (Linux)
   - A Linux environment such as StellarMate OS 2.x or Ubuntu
-  - Python 3.x
+  - Python 3.10 or later
   - `pyside6` (GUI)
   - `dbus-next` (D-BUS integration with KStars / Ekos / INDI)
 
 ### Installation
 
-### Sender (Windows)
+#### Sender (Windows)
 
 ```powershell
 cd ~
@@ -136,11 +189,11 @@ git clone https://github.com/jctk/RemoteINDIPAD.git
 cd RemoteINDIPAD
 
 python -m venv .venv
-.venv\Scripts\activate
+.venv\Scripts\activate.ps1
 pip install pygame pyside6
 ```
 
-### Receiver (Linux)
+#### Receiver (Linux)
 
 ```bash
 cd ~
@@ -154,20 +207,22 @@ source .venv/bin/activate
 pip install pyside6 dbus-next
 ```
 
-## Starting the Programs
+### Starting the Scripts
 
 - Start each script with Python.
 - For usage instructions other than how to start the programs, see [Usage](#usage).
 
-### Windows
+#### Windows
 
 ```powershell
+.venv\Scripts\activate.ps1
 python remote_indipad_sender.py
 ```
 
-### StellarMate OS
+#### StellarMate OS
 
 ```bash
+source .venv/bin/activate
 python remote_indipad_receiver.py
 ```
 
@@ -263,13 +318,12 @@ The available abstract Actions are listed below.
 
 1. What should I do if running the executable version of RemoteINDIPAD receiver from a terminal displays missing-library messages or errors such as a segmentation violation?
     - This may occur because the environment where the executable was created differs from the environment where it is run.
-    - Use the script version, or create an executable in the script-version environment using `build.py`.
-    - Run `python build.py --help` to view the usage information.
+    - Try the wheel file or the scripts in the GitHub repository.
 1. Can RemoteINDIPAD receiver run on Windows?
     - It may run if the required Python modules are installed.
-    However, because Windows does not provide the relevant D-BUS functionality and INDI drivers do not run there, it can only be used to verify the connection between the sender and receiver.
+    However, Windows does not provide D-BUS functionality, and INDI drivers do not run there, so it can only be used to verify the connection between the sender and receiver.
 1. Can RemoteINDIPAD sender run on Linux?
-    - It may run if the required Python modules can be installed.
+    - It may run if the required Python packages can be installed.
     - Even with the same GAMEPAD, the information obtained may differ from that obtained on Windows.
 1. The RemoteINDIPAD receiver lists the Juwei-17 as a focuser.
     - The Juwei-17 is currently identified as such because it has multiple attributes in addition to being a mount.

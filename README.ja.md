@@ -48,25 +48,34 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 
 ## 配布
 
-- 配布形態は二種類あります。
-- 一つは実行ファイル形式、もう一つはスクリプト形式（GitHubのリポジトリ）です。
-- いずれか一方をご利用ください。
+- 配布形態は三種類あります。
+- いずれか一つを選ぶとよいでしょう。
 
-## 実行ファイル形式
+| 配布形態 | 説明 |
+| - | - |
+| 実行ファイル | pyinstallerで単一の実行形式にまとめたファイル。環境をあまり気にしなくてよいので一番楽。実行ファイル作成環境と異なると実行時にエラーが発生する場合がある。 |
+| ホイールファイル | `pip install`でインストールする Python パッケージ。すでに python の実行環境があるなら利用を検討する価値はある。 |
+| GitHubのリポジトリ | 開発用ソースコードなどを含む。興味があるかたはどうぞ。 |
+
+## 実行ファイル を使用する
 
 - 実行ファイル形式は後述のスクリプト形式のファイルを pyinstaller で単一のファイルで実行可能にしたファイルです。
 - この他に追加が必要なファイルはありません。（本当に追加ファイルが不要か未検証です。）
 - Windows x64 用、Linux aarch64 用があります。
 - Linux aarch64 用は StellarMate OS など Raspberry PI で利用します。
 
-### ダウンロード
+### ダウンロード - 実行ファイルの圧縮ファイル
 
-[Releases](https://github.com/jctk/RemoteINDIPAD/releases) からファイルを Windows 用の `RemoteINDIPAD-windows-x64.zip` と StellarMate OS 用の `RemoteINDIPAD-linux-aarch64.tar.gz` をダウンロードしてください。
+[Releases](https://github.com/jctk/RemoteINDIPAD/releases) から Windows 用の `RemoteINDIPAD-windows-x64.zip` と StellarMate OS 用の `RemoteINDIPAD-linux-aarch64.tar.gz` をダウンロードしてください。
 
-### インストール
+### インストール - 実行ファイルの展開
 
 1. Windows で `RemoteINDIPAD-windows-x64.zip` を展開し `remote_indipad_sender.exe` と `gamepad_profiles.json` を任意の同じフォルダーに展開してください。
 2. StellarMate OS で `RemoteINDIPAD-linux-aarch64.tar.gz` を展開し `remote_indipad_reciever` を任意のフォルダーに展開してください。
+
+### アンインストール - 実行ファイルの削除
+
+- 導入したファイルを直接削除してください。
 
 ### 使い方
 
@@ -81,35 +90,80 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 
 > ⚠️最初は控えめな操作で動作を確認してください。特にマウントやローテーターが異常な動作をする場合は機材が損傷する恐れがあります。いつでも機材を停止できるように心がけてください。
 
-## pip wheel 形式（GitHub Releases）
+## ホイールファイル
 
-- PyPIには公開せず、wheelをGitHub Releasesから直接インストールします。
-- wheelには`remote_indipad_sender`、`remote_indipad_receiver`、`gamepad_profiles.json`が含まれます。依存パッケージもインストールされますが、Windowsでは`dbus-next`はインストールされません。
-- `v0.9.0`は例です。インストールするReleaseのタグとwheelファイル名に置き換えてください。
+- `pip install ホイールファイル` でインストールします。
+- python が導入されている必要があります。
+- 必要なパッケージは `pip install` 時に導入されます。
+- 環境によっては必要なパッケージをインストールできない場合があります。そのような場合は venv （python の仮想環境）で別のバージョンの python を導入すると解決する場合があります。
 
-### Windows（送信側）
+### ダウンロード - ホイールファイル
+
+[Releases](https://github.com/jctk/RemoteINDIPAD/releases) から `remoteindipad-<バージョン番号>-py3-none-any.whl` をダウンロードしてください。
+
+### インストール - pip install
+
+- python をインストールしている環境で、以下のコマンドを実行してください。
+- venv を使用する場合は `pip install` の前に [venv（python仮想環境）を使用する場合](#using-venv-wheel) を先に実行してください。
+
+```bash
+pip install remoteindipad-<バージョン番号>-py3-none-any.whl
+```
+
+- ホイールファイルをダウンロードせずに直接ファイルのリンクを指定することもできます。
+
+```bash
+pip install https://github.com/jctk/RemoteINDIPAD/releases/download/<バージョンタグ>/remoteindipad-<バージョン番号>-py3-none-any.whl
+```
+
+### venv（python仮想環境）を使用する場合 {#using-venv-wheel}
+
+- `pip install` の前に以下の手順で venv を作成できます。
+- activate するとプロンプトが `(.venv)` から始まるようになります。
+
+```bash
+# 現在のバージョンの python の venv を作成する場合（Linux）
+python -m venv .venv
+source .venv/bin/activate
+```
+
+```PowerShell
+# 現在のバージョンの python の venv を作成する場合（Windows）
+python -m venv .venv
+.venv/script/activate.ps1
+```
+
+```bash
+# 指定のバージョンの python の venv を作成する場合（Linux）
+uv venv --python 3.13 --seed .venv
+source .venv/bin/activate
+```
+
+### 起動方法
+
+- 起動方法以外の使用方法は [使い方](#使い方) に記載の通りです。
+
+#### Windows の場合
 
 ```powershell
-python -m venv .venv
-.venv\Scripts\activate
-python -m pip install "RemoteINDIPAD @ https://github.com/jctk/RemoteINDIPAD/releases/download/v0.9.0/remoteindipad-0.9.0-py3-none-any.whl"
+# venv 環境の場合は activate する。
+.venv/script/activate.ps1
+# RemoteINDIPAD sender を起動する
 remote_indipad_sender
 ```
 
-### Linux（受信側）
+#### StellarMate OS など Linux の場合
 
 ```bash
-python3 -m venv .venv
+# venv 環境の場合は activate する。
 source .venv/bin/activate
-python -m pip install "RemoteINDIPAD @ https://github.com/jctk/RemoteINDIPAD/releases/download/v0.9.0/remoteindipad-0.9.0-py3-none-any.whl"
+# RemoteINDIPAD receiver を起動する
 remote_indipad_receiver
 ```
 
-- プロファイルとGUI設定はユーザー設定フォルダーに置かれます。新しいwheelの初回起動時にプロファイルを更新し、同じバージョンでは利用者の変更を保持します。
+## GitHubのレポジトリ
 
-## スクリプト形式（GitHubのレポジトリ）
-
-- スクリプト形式は RemoteINDIPAD の開発用のリポジトリです。
+- GitHubのレポジトリ RemoteINDIPAD の開発環境です。
 
 ### Requirements
 
@@ -120,13 +174,13 @@ remote_indipad_receiver
   - `pyside6`（GUI）
 - 受信側（Linux）
   - StellarMate OS 2.x または Ubuntu などの Linux 環境
-  - Python 3 系
+  - Python 3.10 以降
   - `pyside6`（GUI）
   - `dbus-next`（KStars / Ekos / INDI との D-BUS 連携）
 
 ### Installation
 
-### 送信側（Windows）
+#### 送信側（Windows）
 
 ```powershell
 cd ~
@@ -136,11 +190,11 @@ git clone https://github.com/jctk/RemoteINDIPAD.git
 cd RemoteINDIPAD
 
 python -m venv .venv
-.venv\Scripts\activate
+.venv\Scripts\activate.ps1
 pip install pygame pyside6
 ```
 
-### 受信側（Linux）
+#### 受信側（Linux）
 
 ```bash
 cd ~
@@ -154,20 +208,22 @@ source .venv/bin/activate
 pip install pyside6 dbus-next
 ```
 
-## 起動方法
+### スクリプトの起動方法
 
 - 各スクリプトを python で起動してください。
 - 起動方法以外の使用方法は [使い方](#使い方) に記載の通りです。
 
-### Windows の場合
+#### Windows での起動
 
 ```powershell
+.venv\Scripts\activate.ps1
 python remote_indipad_sender.py
 ```
 
-### StellarMate OS の場合
+#### StellarMate OS での起動
 
 ```bash
+source .venv/bin/activate
 python remote_indipad_receiver.py
 ```
 
@@ -262,14 +318,13 @@ RemoteINDIPAD receiverはRemoteINDIPAD senderからNetwork経由で受信した"
 ## FAQ
 
 1. Terminalから実行ファイル形式のRemoteINDIPAD receiverを実行すると、Teminalにライブラリ不足が表示されたりセグメンテーション バイオレーションなどのエラーが発生する場合の対応は？
-    - 実行ファイル形式を作成した環境と実行環境の差異のために発生する場合があります。
-    - スクリプト形式を使用するか、スクリプト形式の環境に含まれる `build.py` を用いて実行ファイルを作成してください。
-    - 使い方は `python build.py --help` で確認してください。
+    - 実行ファイルを作成した環境と実行環境の差異のために発生する場合があります。
+    - ホイールファイルまたはGitHubレポジトリのスクリプトを試してください。
 1. RemoteINDIPAD receiver を Windows で実行できますか？
     - 必要なpythonモジュールを導入すると実行できる可能性があります。
-    ただしD-BUSに関する仕組みを持たないこと、INDIドライバーが動作しないことから、senderとreceiverの接続確認に限っての利用となります。
+    ただしWindowsはD-BUSに関する仕組みを持たず、INDIドライバーも作しないことから、senderとreceiverの接続確認に限っての利用となります。
 1. RemoteINDIPAD sender を Linux で実行できますか？  
-    - 必要なpythonモジュールが導入できるなら実行できる可能性があります。
+    - 必要なpythonパッケージを導入できるなら実行できる可能性があります。
     - 同一のGAMEPADを使用しても取得できる情報がWindowsと異なる場合があります。
 1. RemoteINDIPAD receiverでJuwei-17がFocuserのリストに含まれています。
     - Juwei-17はマウントの他に複数の属性を持つためそのように判定されて今います。
