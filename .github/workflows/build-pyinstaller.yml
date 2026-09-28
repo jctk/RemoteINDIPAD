@@ -73,9 +73,9 @@ jobs:
           path: release/linux-aarch64/
           retention-days: 30
 
-  build-ubuntu-x64:
+  build-ubuntu-26-x64:
     if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'linux-x64' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
 
