@@ -56,13 +56,13 @@ Supported action names in the sender mapping:
 
 - `MOUNT_NORTH`, `MOUNT_SOUTH`, `MOUNT_WEST`, `MOUNT_EAST`
 - `MOUNT_STEP_UP`, `MOUNT_STEP_DOWN`, `MOUNT_STOP`
-- `FOCUS_IN`, `FOCUS_OUT`, `FOCUS_STEP_UP`, `FOCUS_STEP_DOWN`, `FOCUS_STOP`
+- `FOCUS_IN`, `FOCUS_OUT`, `FOCUS_STEP_UP`, `FOCUS_STEP_DOWN`
 - `FILTERWHEEL_PREV`, `FILTERWHEEL_NEXT`
 - `CAA_ROTATE_COUNTER_CLOCKWISE`, `CAA_ROTATE_CLOCKWISE`, `CAA_ROTATE_ABORT`
-- `SKYMAP_MOVE`, `SKYMAP_ZOOM_IN`, `SKYMAP_ZOOM_OUT`
+- `SKYMAP_ZOOM_IN`, `SKYMAP_ZOOM_OUT`
 - `SKYMAP_ROTATE_UP`, `SKYMAP_ROTATE_DOWN`
 
-`FOCUS_STEP_UP` and `FOCUS_STEP_DOWN` are handled locally by the sender to change its focus step; they do not produce action packets. `FOCUS_STOP` and `SKYMAP_MOVE` are listed for compatibility, but are not offered as mapping-editor assignments. Sky-map zoom and rotation actions are dispatched on press only.
+`FOCUS_STEP_UP` and `FOCUS_STEP_DOWN` are handled locally by the sender to change its focus step; they do not produce action packets. Sky-map zoom and rotation actions are dispatched on press only.
 
 ## Receiver behavior and validation notes
 
