@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "INDIPAD JSON Protocol",
+  "description": "A single newline-delimited JSON message sent from the RemoteINDIPAD sender to the receiver.",
+  "oneOf": [
+    { "$ref": "#/$defs/heartbeat" },
+    { "$ref": "#/$defs/action" }
+  ],
+  "$defs": {
+    "heartbeat": {
+      "type": "object",
+      "required": ["ts", "type", "device", "status"],
+      "properties": {
+        "ts": { "type": "number", "description": "Unix timestamp in seconds." },
+        "type": { "const": "heartbeat" },
+        "device": { "type": "string" },
+        "status": { "const": "alive" }
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": ["ts", "type", "device", "action", "pressed", "source"],
+      "properties": {
+        "ts": { "type": "number", "description": "Unix timestamp in seconds." },
+        "type": { "const": "action" },
+        "device": { "type": "string" },
+        "action": {
+          "type": "string",
+          "enum": [
+            "MOUNT_NORTH",
+            "MOUNT_SOUTH",
+            "MOUNT_WEST",
+            "MOUNT_EAST",
+            "MOUNT_STEP_UP",
+            "MOUNT_STEP_DOWN",
+            "MOUNT_STOP",
+            "FOCUS_IN",
+            "FOCUS_OUT",
+            "FOCUS_STEP_UP",
+            "FOCUS_STEP_DOWN",
+            "FOCUS_STOP",
+            "FILTERWHEEL_PREV",
+            "FILTERWHEEL_NEXT",
+            "CAA_ROTATE_COUNTER_CLOCKWISE",
+            "CAA_ROTATE_CLOCKWISE",
+            "CAA_ROTATE_ABORT",
+            "SKYMAP_MOVE",
+            "SKYMAP_ZOOM_IN",
+            "SKYMAP_ZOOM_OUT",
+            "SKYMAP_ROTATE_UP",
+            "SKYMAP_ROTATE_DOWN"
+          ]
+        },
+        "pressed": { "type": "boolean" },
+        "source": { "type": "string" },
+        "step": { "type": "integer" },
+        "angle": { "type": "integer", "minimum": -360, "maximum": 360 }
+      }
+    }
+  }
+}

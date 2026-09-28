@@ -13,34 +13,13 @@ import remote_indipad_sender as sender
 
 
 class ProtocolTests(unittest.TestCase):
-    def test_build_payload_has_expected_fields(self):
-        payload = protocol.build_payload(
-            axes={"axis_1": 0.25, "axis_2": -0.5},
-            buttons={"button_0": True, "button_1": False},
-            dpad={"dpad_right": True, "dpad_left": False},
-            mode="slew",
-        )
-        self.assertIn("ts", payload)
-        self.assertEqual(payload["type"], "axis")
-        self.assertEqual(payload["device"], "gamepad")
-        self.assertEqual(payload["mode"], "slew")
-        self.assertAlmostEqual(payload["axes"]["axis_1"], 0.25)
-        self.assertTrue(payload["dpad"]["dpad_right"])
-        self.assertEqual(payload["buttons"]["button_0"], True)
-        self.assertEqual(list(payload.keys())[3:6], ["axes", "dpad", "buttons"])
-
     def test_round_trip_serialization(self):
-        original = protocol.build_payload(
-            axes={"axis_1": 0.0, "axis_2": 1.0},
-            buttons={"button_5": True},
-            dpad={"dpad_up": False, "dpad_right": True},
-            mode="track",
-        )
+        original = protocol.build_action_payload(action="MOUNT_NORTH", pressed=True, source="axis")
         serialized = protocol.serialize_message(original)
         recovered = protocol.parse_message(serialized)
-        self.assertEqual(recovered["mode"], "track")
-        self.assertTrue(recovered["dpad"]["dpad_right"])
-        self.assertEqual(recovered["buttons"]["button_5"], True)
+        self.assertEqual(recovered["type"], "action")
+        self.assertEqual(recovered["action"], "MOUNT_NORTH")
+        self.assertEqual(recovered["source"], "axis")
 
         def test_json_comment_stripping_preserves_string_values(self):
                 content = '''
@@ -56,9 +35,17 @@ class ProtocolTests(unittest.TestCase):
                 self.assertEqual(loaded["url"], "https://example.test/path#fragment")
                 self.assertEqual(loaded["name"], "JC-U3712T")
 
-    def test_validate_message_rejects_missing_axes(self):
-        invalid = {"ts": 1.0, "type": "axis", "device": "gamepad", "dpad": {}, "buttons": {}, "mode": "slew"}
-        self.assertFalse(protocol.validate_message(invalid))
+    def test_validate_message_rejects_axis_state_message(self):
+        axis_state = {
+            "ts": 1.0,
+            "type": "axis",
+            "device": "gamepad",
+            "axes": {},
+            "dpad": {},
+            "buttons": {},
+            "mode": "slew",
+        }
+        self.assertFalse(protocol.validate_message(axis_state))
 
     def test_build_heartbeat_payload_has_expected_fields(self):
         payload = protocol.build_heartbeat_payload()
