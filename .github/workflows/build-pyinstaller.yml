@@ -1,10 +1,10 @@
-name: Build
+name: Build (PyInstaller)
 
 on:
   workflow_dispatch:
     inputs:
       target:
-        description: "Build Targets"
+        description: "Build Targets (PyInstaller)"
         required: true
         default: "all"
         type: choice
