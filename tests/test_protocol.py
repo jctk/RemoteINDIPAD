@@ -1275,7 +1275,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(worker.action_map["dpad_down"], "MOUNT_SOUTH")
 
     def test_default_mapping_uses_gamepad_profile_value(self):
-        config = sender.load_axis_config(Path("D:/Projects/RemoteINDIPAD/gamepad_profiles.json"))
+        config = sender.load_axis_config(Path(__file__).resolve().parents[1] / "gamepad_profiles.json")
         default_mapping = sender.get_default_action_mapping("JC-U3712T", config)
         self.assertEqual(default_mapping["dpad_down"], "MOUNT_SOUTH")
         self.assertEqual(default_mapping["button_6"], "FILTERWHEEL_NEXT")
