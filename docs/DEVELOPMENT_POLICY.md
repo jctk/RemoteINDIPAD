@@ -157,16 +157,16 @@ TBD
 
 #### 使用ライブラリ
 
-- `pygame`: Windows でゲームパッド入力を取得する上で実用性が高い
+- `pygame-ce`: Windows でゲームパッド入力を取得する上で実用性が高い
 - `pyside6`: Qt for Python で GUI 化する。
 - `socket`: 通信
 - `threading` または `asyncio`: 受信タスクと送信タスク分離
-- `pygame`は以下コマンドで導入する。
+- `pygame-ce`, `pyside6` は以下コマンドで導入する。
 
 ```PowerShell
 PS> python -m venv .venv
 PS> .venv\Scripts\activate
-(.venv) PS> pip install pygame
+(.venv) PS> pip install pygame-ce
 (.venv) PS> pip install pyside6
 ```
 
@@ -179,7 +179,7 @@ PS> .venv\Scripts\activate
 
 #### AXIS 入力の実装方針
 
-- pygame から取得した AXIS の連続値は、deadzone を適用して次の 3 状態へ正規化する。
+- pygame-ce から取得した AXIS の連続値は、deadzone を適用して次の 3 状態へ正規化する。
   - `value < -deadzone`: `NEGATIVE`（-1）
   - `abs(value) <= deadzone`: `CENTER`（0）
   - `value > deadzone`: `POSITIVE`（1）
@@ -453,7 +453,7 @@ AXISが前回状態から変化した場合に、状態に割り当てられた�
 ### 11.1 採用する技術
 
 - Python 3
-- `pygame`（Windows でのゲームパッド入力）
+- `pygame-ce`（Windows でのゲームパッド入力）
 - `socket` / `asyncio`（通信）
 - `json`（データ交換）
 - `logging`（ログ出力）
