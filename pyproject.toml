@@ -11,7 +11,6 @@ requires-python = ">=3.10"
 dependencies = [
     "pygame-ce",
     "PySide6",
-    "dbus-next; sys_platform != 'win32'",
 ]
 
 [project.urls]

@@ -183,7 +183,9 @@ remote_indipad_receiver
   - A Linux environment such as StellarMate OS 2.x or Ubuntu
   - Python 3.10 or later
   - `pyside6` (GUI)
-  - `dbus-next` (D-BUS integration with KStars / Ekos / INDI)
+  - QtDBus, provided by PySide6 on supported Linux platforms (KStars / Ekos / INDI integration)
+
+The receiver can also run on Windows for TCP communication testing. KStars / INDI control is unavailable there.
 
 ### Installation
 
@@ -212,7 +214,7 @@ cd RemoteINDIPAD
 
 python -m venv .venv
 source .venv/bin/activate
-pip install pyside6 dbus-next
+pip install pyside6
 ```
 
 ### Starting the Scripts
@@ -347,7 +349,6 @@ The main dependency libraries currently identified are as follows:
 
 - `pygame-ce`: GNU LGPL 2.1
 - `PySide6` / Qt for Python: LGPL 3.0, GPL, or a commercial license
-- `dbus-next`: MIT License
 - `PyInstaller`: GPL 2.0 or later, with a special exception permitting distribution of applications created with PyInstaller
 - Python standard library: Python Software Foundation License
 

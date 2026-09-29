@@ -202,7 +202,7 @@ PS> .venv\Scripts\activate
 #### 使用ライブラリ
 
 - `pyside6`: Qt for Python で GUI 化する。
-- `dbus-next`: KStars/Ekos/INDI を D-BUS で操作する。
+- `PySide6.QtDBus`: Linux上でKStars/Ekos/INDIをD-BUS操作する。WindowsではD-BUS操作を無効化する。
 - `socket`: 通信
 - `threading` または `asyncio`: 受信タスクと送信タスク分離
 - 必要なライブラリは以下の手順で導入する。
@@ -211,7 +211,6 @@ PS> .venv\Scripts\activate
 $ python -m venv .venv
 $ source venv/bin/activate
 (.venv) $ pip install pyside6
-(.venv) $ pip install dbus-next
 ```
 
 #### 実装方針

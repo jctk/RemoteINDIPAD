@@ -1,5 +1,6 @@
 import asyncio
 import io
+import socket
 import tempfile
 import threading
 import unittest
@@ -83,7 +84,7 @@ class ProtocolTests(unittest.TestCase):
                 )
                 for message, expected in (
                     ("error: Connection refused", "Connection refused"),
-                    ("failed to scan INDI devices: dbus-next is required", "failed to scan INDI devices: dbus-next is required"),
+                    ("failed to scan INDI devices: QtDBus is unavailable", "failed to scan INDI devices: QtDBus is unavailable"),
                     ("D-Bus call error: unavailable", "D-Bus call error: unavailable"),
                     ("heartbeat lost", "heartbeat lost"),
                 ):
@@ -708,7 +709,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(calls[2][0], "setNumber")
         self.assertEqual(calls[3], ("sendProperty", ("GEMINI EAF GS150RC", "REL_FOCUS_POSITION")))
 
-    def test_indi_method_uses_dbus_next_proxy_method_names(self):
+    def test_indi_method_uses_interface_method_names(self):
         calls = []
 
         class FakeInterface:
@@ -1354,6 +1355,114 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("MOUNT_NORTH", printed)
         self.assertIn("MOUNT_STOP", printed)
         self.assertIn("SKYMAP_MOVE", printed)
+
+    def test_receiver_accepts_actions_without_dbus(self):
+        listening = threading.Event()
+        action_logged = threading.Event()
+        messages = []
+
+        def collect_log(message):
+            messages.append(message)
+            if "listening on 127.0.0.1:" in message:
+                listening.set()
+            if "action: MOUNT_NORTH" in message:
+                action_logged.set()
+
+        with patch.object(receiver, "MessageBus", None), \
+                patch.object(receiver, "QDBusInterface") as dbus_interface:
+            instance = receiver.Receiver(
+                host="127.0.0.1",
+                port=0,
+                log_actions=True,
+                log_callback=collect_log,
+            )
+            try:
+                instance.start()
+                self.assertTrue(listening.wait(2))
+                port = instance._server_socket.getsockname()[1]
+                with socket.create_connection(("127.0.0.1", port), timeout=2) as client:
+                    client.sendall(b'{"type":"action","action":"MOUNT_NORTH","pressed":true}\n')
+                    self.assertTrue(action_logged.wait(2))
+            finally:
+                instance.stop()
+
+        self.assertTrue(any("connected from" in message for message in messages))
+        dbus_interface.assert_not_called()
+
+    def test_indi_scan_returns_empty_when_dbus_is_unavailable(self):
+        with patch.object(receiver, "MessageBus", None), \
+                patch.object(receiver, "QDBusInterface") as dbus_interface:
+            discovered = asyncio.run(receiver.fetch_indi_device_list())
+
+        self.assertEqual(discovered, {"mount": [], "focuser": [], "filter": [], "rotator": []})
+        dbus_interface.assert_not_called()
+
+    def test_gui_scan_clears_placeholder_devices_without_dbus(self):
+        class FakeCombo:
+            def __init__(self):
+                self.items = ["Mount 1", "Mount 2"]
+
+            def clear(self):
+                self.items.clear()
+
+            def addItem(self, value):
+                self.items.append(value)
+
+        class FakeLineEdit:
+            def __init__(self):
+                self.value = "4"
+
+            def clear(self):
+                self.value = ""
+
+        window = receiver.ReceiverWindow.__new__(receiver.ReceiverWindow)
+        combos = [FakeCombo() for _ in range(4)]
+        window.mount_combo, window.focuser_combo, window.filter_combo, window.rotator_combo = combos
+        window.filter_slots_edit = FakeLineEdit()
+        messages = []
+        window.log = messages.append
+
+        with patch.object(receiver, "MessageBus", None):
+            window.on_scan_indi()
+
+        self.assertTrue(all(combo.items == ["Not scanned"] for combo in combos))
+        self.assertEqual(window.filter_slots_edit.value, "")
+        self.assertIn("QtDBus unavailable; skipping INDI scan", messages)
+
+    def test_qtdbus_adapter_converts_method_names_and_unwraps_reply(self):
+        calls = []
+
+        class FakeReply:
+            def type(self):
+                return receiver.QDBusMessage.MessageType.ReplyMessage
+
+            def arguments(self):
+                return [42.5]
+
+        class FakeInterface:
+            def __init__(self, *args):
+                pass
+
+            def call(self, method_name, *args):
+                calls.append((method_name, args))
+                return FakeReply()
+
+        with patch.object(receiver, "QDBusInterface", FakeInterface):
+            interface = receiver._QtDBusInterface("org.kde.kstars", "/KStars", "org.kde.kstars", object())
+            result = asyncio.run(interface.call_get_sky_map_rotation())
+            property_value = asyncio.run(
+                interface.call_get("org.kde.kstars.INDI.GenericDevice", "name")
+            )
+
+        self.assertEqual(result, 42.5)
+        self.assertEqual(property_value, 42.5)
+        self.assertEqual(
+            calls,
+            [
+                ("getSkyMapRotation", ()),
+                ("Get", ("org.kde.kstars.INDI.GenericDevice", "name")),
+            ],
+        )
 
     def test_mount_actions_toggle_indi_switches_and_abort(self):
         receiver.set_active_indi_device("mount", "INDI_MOUNT")

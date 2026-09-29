@@ -30,7 +30,7 @@ jobs:
         run: |
           python -m venv .venv
           .venv\Scripts\pip install --upgrade pip
-          .venv\Scripts\pip install pygame-ce pyside6 dbus-next pyinstaller
+          .venv\Scripts\pip install pygame-ce pyside6 pyinstaller
 
       - name: Run build-pyinstaller.py
         shell: pwsh
@@ -58,7 +58,7 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install pygame-ce pyside6 dbus-next pyinstaller
+          .venv/bin/pip install pygame-ce pyside6 pyinstaller
 
       - name: Warning before building for Linux ARM
         run: |
@@ -87,7 +87,7 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install pygame-ce pyside6 dbus-next pyinstaller
+          .venv/bin/pip install pygame-ce pyside6 pyinstaller
 
       - name: Run build-pyinstaller.py
         run: .venv/bin/python build-pyinstaller.py

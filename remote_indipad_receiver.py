@@ -9,8 +9,9 @@ import time
 from datetime import datetime
 import builtins
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 import sysconfig
+import xml.etree.ElementTree as ET
 
 import remote_indipad_protocol as protocol
 from remote_indipad_paths import get_installed_package_version, get_user_config_dir
@@ -33,6 +34,11 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
     QFont = QIcon = QCheckBox = QComboBox = QFormLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QPushButton = QSizePolicy = QTextEdit = QVBoxLayout = QWidget = object
     QColor = QPalette = QTextCharFormat = QTextCursor = object
     QApplication = None
+
+try:
+    from PySide6.QtDBus import QDBusConnection, QDBusInterface, QDBusMessage, QDBusVariant
+except ImportError:  # pragma: no cover - QtDBus is unavailable on some platforms
+    QDBusConnection = QDBusInterface = QDBusMessage = QDBusVariant = None
 
 
 VERSION = "0.9.0"
@@ -80,12 +86,94 @@ FOCUSER_INTERFACE = 1 << 3
 FILTER_INTERFACE = 1 << 4
 ROTATOR_INTERFACE = 1 << 12
 
-try:
-    from dbus_next.aio.message_bus import MessageBus
-    from dbus_next.constants import BusType
-except ImportError:  # pragma: no cover - optional dependency for D-Bus discovery
-    MessageBus = None
-    BusType = None
+class BusType:
+    SESSION = "session"
+
+
+class _QtDBusInterface:
+    def __init__(self, service: str, path: str, interface_name: str, connection):
+        assert QDBusInterface is not None
+        self._interface = QDBusInterface(service, path, interface_name, connection)
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("call_"):
+            method_name = name[len("call_") :]
+        else:
+            method_name = name
+        method_name = {
+            "get": "Get",
+            "set": "Set",
+            "get_all": "GetAll",
+        }.get(
+            method_name,
+            method_name.split("_")[0] + "".join(
+                part[:1].upper() + part[1:] for part in method_name.split("_")[1:]
+            ),
+        )
+
+        async def call(*args):
+            assert QDBusMessage is not None
+            reply = self._interface.call(method_name, *args)
+            if reply.type() == QDBusMessage.MessageType.ErrorMessage:
+                raise RuntimeError(f"{reply.errorName()}: {reply.errorMessage()}")
+            arguments = reply.arguments()
+            if not arguments:
+                return None
+            if len(arguments) == 1:
+                return arguments[0]
+            return tuple(arguments)
+
+        return call
+
+
+class _QtDBusProxyObject:
+    def __init__(self, service: str, path: str, connection):
+        self._service = service
+        self._path = path
+        self._connection = connection
+
+    def get_interface(self, interface_name: str):
+        return _QtDBusInterface(self._service, self._path, interface_name, self._connection)
+
+
+class _QtDBusMessageBus:
+    def __init__(self, bus_type=None):
+        self._connection = None
+
+    async def connect(self):
+        if QDBusConnection is None or os.name == "nt":
+            raise RuntimeError("QtDBus is unavailable on this platform")
+        self._connection = QDBusConnection.sessionBus()
+        if not self._connection.isConnected():
+            raise RuntimeError(self._connection.lastError().message())
+
+    async def introspect(self, service: str, path: str):
+        assert QDBusInterface is not None
+        assert QDBusMessage is not None
+        if self._connection is None:
+            raise RuntimeError("QtDBus session bus is not connected")
+        interface = QDBusInterface(
+            service, path, "org.freedesktop.DBus.Introspectable", self._connection
+        )
+        reply = interface.call("Introspect")
+        if reply.type() == QDBusMessage.MessageType.ErrorMessage:
+            raise RuntimeError(f"{reply.errorName()}: {reply.errorMessage()}")
+        xml_data = str(reply.arguments()[0])
+        root = ET.fromstring(xml_data)
+        return type(
+            "Introspection",
+            (),
+            {"nodes": [type("Node", (), {"name": node.get("name", "")}) for node in root.findall("node")]},
+        )()
+
+    def get_proxy_object(self, service: str, path: str, introspection):
+        return _QtDBusProxyObject(service, path, self._connection)
+
+    def disconnect(self):
+        self._connection = None
+
+
+MessageBus: Any = _QtDBusMessageBus if QDBusConnection is not None and os.name != "nt" else None
 
 
 
@@ -392,10 +480,10 @@ def _log_dbus(message: str) -> None:
 
 
 class _LoggedDbusInterface:
-    def __init__(self, interface):
+    def __init__(self, interface: Any):
         self._interface = interface
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         method = getattr(self._interface, name)
         if not callable(method):
             return method
@@ -427,7 +515,7 @@ def _check_indi_call_result(method_name: str, args: tuple, result) -> None:
 async def _run_indi_calls(calls: list[tuple[str, tuple]]):
     """Execute a sequence of INDI D-Bus calls over a single connection."""
     if MessageBus is None or BusType is None:
-        raise RuntimeError("dbus-next is required for INDI operations")
+        raise RuntimeError("QtDBus is unavailable for INDI operations")
 
     bus = MessageBus(bus_type=BusType.SESSION)
     await bus.connect()
@@ -487,6 +575,8 @@ async def _get_filter_slot_count(driver_name: str) -> int:
 
 # Synchronous wrapper for retrieving the number of filter slots for a given driver.
 def get_filter_slot_count(driver_name: str) -> int:
+    if MessageBus is None:
+        return 0
     return asyncio.run(_get_filter_slot_count(driver_name))
 
 # Helper for fetching the mount slew rates asynchronously.
@@ -495,7 +585,7 @@ async def _fetch_mount_slew_rates_async(driver_name: str) -> list[str]:
     if not driver_name:
         return []
     if MessageBus is None or BusType is None:
-        raise RuntimeError("dbus-next is required for INDI operations")
+        raise RuntimeError("QtDBus is unavailable for INDI operations")
 
     bus = MessageBus(bus_type=BusType.SESSION)
     await bus.connect()
@@ -560,7 +650,7 @@ async def _get_mount_slew_switch_state_async(driver_name: str, slew_rate: str) -
     if not driver_name or not slew_rate:
         return False
     if MessageBus is None or BusType is None:
-        raise RuntimeError("dbus-next is required for INDI operations")
+        raise RuntimeError("QtDBus is unavailable for INDI operations")
 
     bus = MessageBus(bus_type=BusType.SESSION)
     await bus.connect()
@@ -670,7 +760,7 @@ def execute_focus_action(direction: str, driver_name: str | None = None, step: i
 async def _execute_filterwheel_action_async(driver_name: str, direction: str):
     """Read the slot count/current slot and apply the move over one bus connection."""
     if MessageBus is None or BusType is None:
-        raise RuntimeError("dbus-next is required for INDI operations")
+        raise RuntimeError("QtDBus is unavailable for INDI operations")
 
     bus = MessageBus(bus_type=BusType.SESSION)
     await bus.connect()
@@ -828,7 +918,7 @@ def normalize_rotator_target_angle(current_angle, delta_angle, max_rotation=360.
 async def _execute_rotator_action_async(driver_name: str, direction: str, angle: int | float | None = None):
     """Read the rotator state, clamp the target angle to the fixed 0..360 range, and move it in one bus session."""
     if MessageBus is None or BusType is None:
-        raise RuntimeError("dbus-next is required for INDI operations")
+        raise RuntimeError("QtDBus is unavailable for INDI operations")
 
     bus = MessageBus(bus_type=BusType.SESSION)
     await bus.connect()
@@ -983,7 +1073,7 @@ def execute_rotator_action(direction: str, angle: int | float | None = None, dri
 async def _execute_rotator_abort_async(driver_name: str):
     """Abort the current rotator motion using the INDI abort switch."""
     if MessageBus is None or BusType is None:
-        raise RuntimeError("dbus-next is required for INDI operations")
+        raise RuntimeError("QtDBus is unavailable for INDI operations")
 
     bus = MessageBus(bus_type=BusType.SESSION)
     await bus.connect()
@@ -1127,6 +1217,8 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
 
 # Helper for extracting the underlying value from a D-Bus value object.
 def _dbus_value(value):
+    if QDBusVariant is not None and isinstance(value, QDBusVariant):
+        return value.variant()
     return getattr(value, "value", value)
 
 # Helper for classifying an INDI driver based on its interface value.
@@ -1146,7 +1238,7 @@ def classify_indi_driver(driver_interface_value) -> dict[str, bool]:
 # Helper for fetching the list of available INDI devices asynchronously.
 async def fetch_indi_device_list():
     if MessageBus is None or BusType is None:
-        raise RuntimeError("dbus-next is required for INDI scanning")
+        return {"mount": [], "focuser": [], "filter": [], "rotator": []}
 
     bus = MessageBus(bus_type=BusType.SESSION)
     await bus.connect()
@@ -1553,6 +1645,13 @@ class ReceiverWindow(QMainWindow):
         self.log(f"restarted listener on {host}:{port}")
 
     def on_scan_indi(self):
+        if MessageBus is None:
+            for combo in (self.mount_combo, self.focuser_combo, self.filter_combo, self.rotator_combo):
+                combo.clear()
+                combo.addItem("Not scanned")
+            self.filter_slots_edit.clear()
+            self.log("QtDBus unavailable; skipping INDI scan")
+            return
         self.log("scanning INDI devices...")
 
         def apply_scan_result(result):
@@ -1694,6 +1793,8 @@ def stop_mount_motion() -> None:
 # KStars (e.g. rotator abort + mount abort at the same time) can make KStars' INDI D-Bus panel hang
 # on Introspect, so these must not run in parallel threads.
 def trigger_heartbeat_emergency_stop() -> None:
+    if MessageBus is None:
+        return
     rotator_active = bool(_ROTATOR_HOLD_EVENTS)
     rotator_target = get_active_indi_device("rotator") if rotator_active else ""
     stop_rotator_hold()
@@ -1895,7 +1996,7 @@ def handle_skymap_move(pressed: bool, source: str = "stick") -> None:
 # Helper for retrieving the current sky map rotation asynchronously.
 async def _get_skymap_rotation_async() -> float:
     if MessageBus is None or BusType is None:
-        raise RuntimeError("dbus-next is required for KStars sky map operations")
+        raise RuntimeError("QtDBus is unavailable for KStars sky map operations")
 
     bus = MessageBus(bus_type=BusType.SESSION)
     await bus.connect()
@@ -1917,7 +2018,7 @@ async def _get_skymap_rotation_async() -> float:
 # Helper for setting the sky map rotation asynchronously.
 async def _set_skymap_rotation_async(angle: float) -> None:
     if MessageBus is None or BusType is None:
-        raise RuntimeError("dbus-next is required for KStars sky map operations")
+        raise RuntimeError("QtDBus is unavailable for KStars sky map operations")
 
     bus = MessageBus(bus_type=BusType.SESSION)
     await bus.connect()
@@ -1960,7 +2061,7 @@ def execute_skymap_rotate(direction: str) -> bool:
 # Helper for executing a sky map zoom action asynchronously.
 async def _execute_skymap_zoom_action(method_name: str) -> None:
     if MessageBus is None or BusType is None:
-        raise RuntimeError("dbus-next is required for KStars sky map operations")
+        raise RuntimeError("QtDBus is unavailable for KStars sky map operations")
 
     bus = MessageBus(bus_type=BusType.SESSION)
     await bus.connect()
@@ -2043,6 +2144,8 @@ _DISPATCH_TABLE = {
 
 # Helper for handling sky map rotate left action.
 def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown", step: int | None = None, angle: int | None = None) -> None:
+    if MessageBus is None:
+        return
     handler = _DISPATCH_TABLE.get(action)
     if handler is None:
         print(f"unknown action: {action} pressed={pressed} source={source}", flush=True)
