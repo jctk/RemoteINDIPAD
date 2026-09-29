@@ -31,8 +31,14 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
             pass
 
     QTimer = None
-    QFont = QIcon = QCheckBox = QComboBox = QFormLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QPushButton = QSizePolicy = QTextEdit = QVBoxLayout = QWidget = object
-    QColor = QPalette = QTextCharFormat = QTextCursor = object
+
+    class _MissingPySide6Type:
+        """Placeholder for a PySide6 class when the package is not installed; instantiating it raises a clear error instead of silently behaving like a bare object."""
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("PySide6 is required for this feature. Install it with: pip install pyside6")
+
+    QFont = QIcon = QCheckBox = QComboBox = QFormLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QPushButton = QSizePolicy = QTextEdit = QVBoxLayout = QWidget = _MissingPySide6Type
+    QColor = QPalette = QTextCharFormat = QTextCursor = _MissingPySide6Type
     QApplication = None
 
 try:

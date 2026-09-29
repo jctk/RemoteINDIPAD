@@ -43,8 +43,14 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
 
     QTimer = None
     Signal = _FallbackSignal
-    QColor = QIcon = QPalette = QFont = QCheckBox = QComboBox = QFormLayout = QGridLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QMessageBox = QPushButton = QSpinBox = QTextEdit = QVBoxLayout = QWidget = object
-    QTextCharFormat = QTextCursor = object
+
+    class _MissingPySide6Type:
+        """Placeholder for a PySide6 class when the package is not installed; instantiating it raises a clear error instead of silently behaving like a bare object."""
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("PySide6 is required for this feature. Install it with: pip install pyside6")
+
+    QColor = QIcon = QPalette = QFont = QCheckBox = QComboBox = QFormLayout = QGridLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QMessageBox = QPushButton = QSpinBox = QTextEdit = QVBoxLayout = QWidget = _MissingPySide6Type
+    QTextCharFormat = QTextCursor = _MissingPySide6Type
     QApplication = None
 
 import remote_indipad_protocol as protocol
@@ -332,7 +338,6 @@ def get_gamepad_input_rows(selected_device: str | None = None):
                 pygame.joystick.init()
                 for idx in range(int(getattr(pygame.joystick, "get_count", lambda: 0)())):
                     joy = pygame.joystick.Joystick(idx)
-                    joy.init()
                     if str(get_device_name(joy)).lower() == str(selected_device).lower():
                         axis_count = max(axis_count, int(getattr(joy, "get_numaxes", lambda: 0)()))
                         button_count = max(button_count, int(getattr(joy, "get_numbuttons", lambda: 0)()))
@@ -1000,7 +1005,6 @@ def init_gamepad(selected_device: str | None = None):
     names = [pygame.joystick.Joystick(index).get_name() for index in range(count)]
     selected_index = resolve_gamepad_selection(names, selected_device)
     joy = pygame.joystick.Joystick(selected_index)
-    joy.init()
     return joy
 
 
@@ -1679,7 +1683,6 @@ class IndipadWindow(QMainWindow):
                     gui_pygame.joystick.init()
                 for index in range(gui_pygame.joystick.get_count()):
                     joy = gui_pygame.joystick.Joystick(index)
-                    joy.init()
                     if get_device_name(joy) == controller_name:
                         controller_guid = get_device_guid(joy)
                         break
@@ -1760,7 +1763,6 @@ class IndipadWindow(QMainWindow):
             if selected_index < 0 or selected_index >= gui_pygame.joystick.get_count():
                 return
             selected_joy = gui_pygame.joystick.Joystick(selected_index)
-            selected_joy.init()
             axes, buttons, dpad = read_gamepad_state(selected_joy)
             axes = normalize_axes(axes, self.gui_settings.get("deadzone", DEADZONE))
             buttons = {k: bool(v) for k, v in buttons.items()}
@@ -1794,7 +1796,6 @@ class IndipadWindow(QMainWindow):
                     gui_pygame.joystick.init()
                 for index in range(gui_pygame.joystick.get_count()):
                     joy = gui_pygame.joystick.Joystick(index)
-                    joy.init()
                     if get_device_name(joy) == device_name:
                         guid = get_device_guid(joy)
                         break
@@ -1913,7 +1914,6 @@ class IndipadWindow(QMainWindow):
                     gui_pygame.joystick.init()
                 for index in range(gui_pygame.joystick.get_count()):
                     joy = gui_pygame.joystick.Joystick(index)
-                    joy.init()
                     if get_device_name(joy) == selected_device:
                         selected_guid = get_device_guid(joy)
                         break
@@ -1999,7 +1999,6 @@ class IndipadWindow(QMainWindow):
                     gui_pygame.joystick.init()
                 for index in range(gui_pygame.joystick.get_count()):
                     joy = gui_pygame.joystick.Joystick(index)
-                    joy.init()
                     if get_device_name(joy) == device_name:
                         controller_guid = get_device_guid(joy)
                         break
@@ -2210,7 +2209,6 @@ class MappingEditorWindow(QMainWindow):
             selected_name = str(self.selected_device or "").strip().lower()
             for index in range(gui_pygame.joystick.get_count()):
                 joy = gui_pygame.joystick.Joystick(index)
-                joy.init()
                 if not selected_name or get_gamepad_name(joy).lower() == selected_name:
                     return joy
         except Exception:
