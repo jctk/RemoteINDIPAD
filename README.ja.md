@@ -90,12 +90,12 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 
 > ⚠️最初は控えめな操作で動作を確認してください。特にマウントやローテーターが異常な動作をする場合は機材が損傷する恐れがあります。いつでも機材を停止できるように心がけてください。
 
-## ホイールファイル
+## ホイールファイル を使用する
 
 - `pip install ホイールファイル` でインストールします。
 - python が導入されている必要があります。
 - 必要なパッケージは `pip install` 時に導入されます。
-- 環境によっては必要なパッケージをインストールできない場合があります。そのような場合は venv （python の仮想環境）で別のバージョンの python を導入すると解決する場合があります。
+- venv pythonの仮想環境にインストールすることをお勧めします。
 
 ### ダウンロード - ホイールファイル
 
@@ -103,41 +103,51 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 
 ### インストール - pip install
 
-- python をインストールしている環境で、以下のコマンドを実行してください。
-- venv を使用する場合は `pip install` の前に [venv（python仮想環境）を使用する場合](#using-venv-wheel) を先に実行してください。
+- python をインストールしている環境で実行してください。
 
 ```bash
-pip install remoteindipad-<バージョン番号>-py3-none-any.whl
+# 現在のバージョンの python の venv を作成する場合（Linux）
+cd <導入先ディレクトリ>
+
+# 仮想環境の作成と有効化
+python -m venv .venv
+source .venv/bin/activate
+
+# ホイールファイルからのインストール
+pip install <ダウンロードパス>/remoteindipad-<バージョン番号>-py3-none-any.whl
 ```
 
-- ホイールファイルをダウンロードせずに直接ファイルのリンクを指定することもできます。
+```PowerShell
+# 現在のバージョンの python の venv を作成する場合（Windows）
+cd <導入先ディレクトリ>
+
+# 仮想環境の作成と有効化
+python -m venv .venv
+.venv/script/activate.ps1
+
+# ホイールファイルからのインストール
+pip install <ダウンロードパス>/remoteindipad-<バージョン番号>-py3-none-any.whl
+```
+
+```bash
+# 指定のバージョンの python の venv を作成する場合（Linux）
+cd <導入先ディレクトリ>
+
+# 仮想環境の作成と有効化
+uv venv --python 3.13 --seed .venv
+source .venv/bin/activate
+
+# ホイールファイルからのインストール
+pip install <ダウンロードパス>/remoteindipad-<バージョン番号>-py3-none-any.whl
+```
+
+- ホイールファイルをダウンロードせずに直接ファイルのリンクを指定する場合は前述の手順の `pip install` の行を以下の内容で置き換えてください。
 
 ```bash
 pip install https://github.com/jctk/RemoteINDIPAD/releases/download/<バージョンタグ>/remoteindipad-<バージョン番号>-py3-none-any.whl
 ```
 
-### venv（python仮想環境）を使用する場合 {#using-venv-wheel}
 
-- `pip install` の前に以下の手順で venv を作成できます。
-- activate するとプロンプトが `(.venv)` から始まるようになります。
-
-```bash
-# 現在のバージョンの python の venv を作成する場合（Linux）
-python -m venv .venv
-source .venv/bin/activate
-```
-
-```PowerShell
-# 現在のバージョンの python の venv を作成する場合（Windows）
-python -m venv .venv
-.venv/script/activate.ps1
-```
-
-```bash
-# 指定のバージョンの python の venv を作成する場合（Linux）
-uv venv --python 3.13 --seed .venv
-source .venv/bin/activate
-```
 
 ### 起動方法
 
@@ -161,7 +171,7 @@ source .venv/bin/activate
 remote_indipad_receiver
 ```
 
-## GitHubのレポジトリ
+## GitHubのレポジトリ を使う
 
 - GitHubのレポジトリ RemoteINDIPAD の開発環境です。
 

@@ -89,12 +89,12 @@ Download `RemoteINDIPAD-windows-x64.zip` for Windows and `RemoteINDIPAD-linux-aa
 
 > ⚠️ Start with conservative movements and verify operation first. In particular, abnormal behavior of a mount or rotator may damage the equipment. Make sure you can stop the equipment at any time.
 
-## Wheel File
+## Using the Wheel File
 
 - Install the wheel file with `pip install`.
 - Python must be installed.
 - Required packages are installed when you run `pip install`.
-- If some packages cannot be installed in your environment, creating a venv with a different Python version may help.
+- Installing in a Python virtual environment (venv) is recommended.
 
 ### Download the Wheel File
 
@@ -102,40 +102,48 @@ Download `remoteindipad-<version>-py3-none-any.whl` from [Releases](https://gith
 
 ### Install with pip
 
-- Run the following command in an environment with Python installed.
-- If you want to use a venv, create it first as described in [Using a venv (Python virtual environment)](#using-a-venv-python-virtual-environment).
-
-```bash
-pip install remoteindipad-<version>-py3-none-any.whl
-```
-
-- You can also install directly from the wheel URL without downloading the file first.
-
-```bash
-pip install https://github.com/jctk/RemoteINDIPAD/releases/download/<release-tag>/remoteindipad-<version>-py3-none-any.whl
-```
-
-### Using a venv (Python virtual environment)
-
-- Create a venv using one of the following procedures before running `pip install`.
-- After activation, the prompt starts with `(.venv)`.
+- Run these commands in an environment with Python installed.
 
 ```bash
 # Create a venv with the current Python version (Linux)
+cd <installation-directory>
+
+# Create and activate the venv
 python -m venv .venv
 source .venv/bin/activate
+
+# Install from the wheel file
+pip install <path-to-downloaded-wheel>/remoteindipad-<version>-py3-none-any.whl
 ```
 
 ```powershell
 # Create a venv with the current Python version (Windows)
+cd <installation-directory>
+
+# Create and activate the venv
 python -m venv .venv
 .venv\Scripts\Activate.ps1
+
+# Install from the wheel file
+pip install <path-to-downloaded-wheel>/remoteindipad-<version>-py3-none-any.whl
 ```
 
 ```bash
 # Create a venv with a specified Python version (Linux)
+cd <installation-directory>
+
+# Create and activate the venv
 uv venv --python 3.13 --seed .venv
 source .venv/bin/activate
+
+# Install from the wheel file
+pip install <path-to-downloaded-wheel>/remoteindipad-<version>-py3-none-any.whl
+```
+
+- To install directly from the wheel URL without downloading the file, replace the `pip install` line above with:
+
+```bash
+pip install https://github.com/jctk/RemoteINDIPAD/releases/download/<release-tag>/remoteindipad-<version>-py3-none-any.whl
 ```
 
 ### Launching the Programs
@@ -160,7 +168,7 @@ source .venv/bin/activate
 remote_indipad_receiver
 ```
 
-## GitHub Repository
+## Using the GitHub Repository
 
 - This is the development environment for the RemoteINDIPAD GitHub repository.
 
