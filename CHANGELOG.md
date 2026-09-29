@@ -2,6 +2,30 @@
 
 This file documents the change history for RemoteINDIPAD.
 
+## [v0.9.0-beta.8]
+
+### Added
+
+- Added INDIPAD JSON protocol documentation and a JSON schema definition (`docs/protocol.md`, `docs/protocol.schema.json`).
+- Added the GNU Lesser General Public License version 2.1 to the project.
+
+### Changed
+
+- Migrated D-Bus integration from `dbus-next` to `QtDBus`, removing the `dbus-next` dependency and its license file.
+- Replaced the `pygame` dependency with `pygame-ce`.
+- Added a placeholder type for missing PySide6 classes so that using GUI features without PySide6 installed raises a clear error instead of behaving like a bare `object`.
+- Removed deprecated per-instance `Joystick.init()` calls in the sender (pygame 2.4.0+ deprecation).
+- Removed `FOCUS_STOP` and `SKYMAP_MOVE` from the action names list for clarity.
+- Renamed `pygame-LGPL-2.1.txt` to `pygame-ce-LGPL-2.1.txt`.
+- Updated `build-pyinstaller.yml` (Ubuntu runner version, target/job description clarity).
+- Fixed the gamepad profiles configuration path used in `test_default_mapping_uses_gamepad_profile_value`.
+- Updated the package version to `0.9.0b8`.
+
+### Documentation
+
+- Updated the README files to clarify wheel file installation/usage instructions and the QtDBus migration.
+- Updated `docs/DEVELOPMENT_POLICY.md` for the QtDBus migration and LGPL-2.1 license.
+
 ## [v0.9.0-beta.6]
 
 ### Added
