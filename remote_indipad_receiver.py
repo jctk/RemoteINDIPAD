@@ -1,4 +1,14 @@
+"""
+Remote INDI PAD Receiver
+
+This module provides the main receiver functionality for the Remote INDI PAD application.
+It includes the necessary classes and functions to handle communication with INDI devices
+over D-Bus, manage GUI settings, and interface with various telescope components.
+"""
+
 import asyncio
+import errno
+import ipaddress
 import json
 import os
 import queue
@@ -24,7 +34,7 @@ except ImportError:  # pragma: no cover - fallback for missing ctypes
 try:
     from PySide6.QtCore import QObject, Qt, QTimer
     from PySide6.QtGui import QColor, QFont, QIcon, QPalette, QTextCharFormat, QTextCursor
-    from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QSizePolicy, QTextEdit, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QSizePolicy, QStyle, QTextEdit, QVBoxLayout, QWidget
 except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is used
     class QObject:
         def __init__(self, *args, **kwargs):
@@ -37,7 +47,7 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
         def __init__(self, *args, **kwargs):
             raise RuntimeError("PySide6 is required for this feature. Install it with: pip install pyside6")
 
-    QFont = QIcon = QCheckBox = QComboBox = QFormLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QPushButton = QSizePolicy = QTextEdit = QVBoxLayout = QWidget = _MissingPySide6Type
+    QFont = QIcon = QCheckBox = QComboBox = QFormLayout = QHBoxLayout = QLabel = QLineEdit = QMainWindow = QPushButton = QSizePolicy = QStyle = QTextEdit = QVBoxLayout = QWidget = _MissingPySide6Type
     QColor = QPalette = QTextCharFormat = QTextCursor = _MissingPySide6Type
     QApplication = None
 
@@ -46,10 +56,21 @@ try:
 except ImportError:  # pragma: no cover - QtDBus is unavailable on some platforms
     QDBusConnection = QDBusInterface = QDBusMessage = QDBusVariant = None
 
+try:
+    from PySide6.QtNetwork import QNetworkInterface
+except ImportError:  # pragma: no cover - QtNetwork is unavailable without PySide6
+    QNetworkInterface = None
 
 VERSION = "0.9.0"
 HOST = "0.0.0.0"
 PORT = 50007
+DEFAULT_LISTEN_TARGET = {
+    "mode": "all",
+    "family": "ipv4",
+    "address": "0.0.0.0",
+    "interface": "",
+    "scope_id": 0,
+}
 # When running PyInstaller onefile, `__file__` points to the temporary extraction directory, so the location of the executable file is used.
 if getattr(sys, "frozen", False):
     _MODULE_DIR = Path(sys.executable).resolve().parent
@@ -66,11 +87,17 @@ _PACKAGE_DATA_DIR = (
 )
 _RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", _PACKAGE_DATA_DIR))
 APP_ICON_PATH = _RESOURCE_DIR / "resources" / "icon.png"
+
+# Path to the GUI settings file
 GUI_SETTINGS_PATH = (
     get_user_config_dir() / "remote_indipad_receiver.json"
+
+    # Use the user config directory for installed packages
     if _IS_INSTALLED_PACKAGE
     else _MODULE_DIR / "remote_indipad_receiver.json"
 )
+
+# Default GUI settings for the application
 DEFAULT_GUI_SETTINGS = {
     "mount": "",
     "focuser": "",
@@ -78,6 +105,7 @@ DEFAULT_GUI_SETTINGS = {
     "filter_slots": 0,
     "rotator": "",
     "host": "0.0.0.0",
+    "listen_target": DEFAULT_LISTEN_TARGET.copy(),
     "port": 50007,
     "heartbeat": False,
     "requests": False,
@@ -87,16 +115,237 @@ DEFAULT_GUI_SETTINGS = {
     "window_geometry": {},
 }
 
+# Interface bit masks for different telescope components
 TELESCOPE_INTERFACE = 1 << 0
 FOCUSER_INTERFACE = 1 << 3
 FILTER_INTERFACE = 1 << 4
 ROTATOR_INTERFACE = 1 << 12
+
+def _legacy_listen_target(host: object) -> dict[str, Any]:
+    """
+    Convert a legacy host string into a normalized listen target dictionary.
+    Args:
+        host: The legacy host string to convert.
+
+    Returns:
+        A normalized listen target dictionary.
+    """
+    value = str(host or HOST).strip()
+    address_text, separator, scope = value.partition("%")
+    try:
+        address = ipaddress.ip_address(address_text)
+    except ValueError:
+        return {
+            "mode": "unavailable",
+            "family": "ipv4",
+            "address": value,
+            "interface": "",
+            "scope_id": 0,
+        }
+
+    family = "ipv6" if address.version == 6 else "ipv4"
+    if address.is_unspecified:
+        mode = "all"
+    elif address.is_loopback:
+        mode = "localhost"
+    else:
+        mode = "address"
+    return {
+        "mode": mode,
+        "family": family,
+        "address": str(address),
+        "interface": scope if separator else "",
+        "scope_id": 0,
+    }
+
+
+def _normalize_listen_target(target: object, legacy_host: object = HOST) -> dict[str, Any]:
+    """
+    Normalize a listen target dictionary, falling back to the legacy host if necessary.
+    Args:
+        target: The listen target dictionary to normalize.
+        legacy_host: The legacy host string to fall back to if normalization fails.
+    
+    Returns:
+        A normalized listen target dictionary.
+    """
+    if not isinstance(target, dict):
+        return _legacy_listen_target(legacy_host)
+
+    mode = str(target.get("mode", "")).strip().lower()
+    family = str(target.get("family", "")).strip().lower()
+    address_text = str(target.get("address", "")).strip()
+    interface = str(target.get("interface", "")).strip()
+    if mode == "unavailable":
+        try:
+            scope_id = max(0, int(target.get("scope_id", 0) or 0))
+        except (TypeError, ValueError):
+            scope_id = 0
+        return {
+            "mode": mode,
+            "family": family if family in {"ipv4", "ipv6"} else "ipv4",
+            "address": address_text,
+            "interface": interface,
+            "scope_id": scope_id,
+        }
+
+    if mode not in {"all", "localhost", "address"}:
+        return _legacy_listen_target(legacy_host)
+    try:
+        address = ipaddress.ip_address(address_text)
+    except ValueError:
+        return _legacy_listen_target(legacy_host)
+
+    normalized_family = "ipv6" if address.version == 6 else "ipv4"
+    if family != normalized_family:
+        return _legacy_listen_target(legacy_host)
+    try:
+        scope_id = max(0, int(target.get("scope_id", 0) or 0))
+    except (TypeError, ValueError):
+        scope_id = 0
+    return {
+        "mode": mode,
+        "family": normalized_family,
+        "address": str(address),
+        "interface": interface,
+        "scope_id": scope_id,
+    }
+
+
+def _listen_target_identity(target: dict) -> tuple[str, str, str, str]:
+    """
+    Get a unique identity tuple for a listen target.
+
+    Args:
+        target: The listen target dictionary to identify.
+
+    Returns:
+        A tuple containing the mode, family, address, and interface of the normalized listen target.
+    """
+    normalized = _normalize_listen_target(target)
+    return (
+        normalized["mode"],
+        normalized["family"],
+        normalized["address"],
+        normalized["interface"],
+    )
+
+
+def _probe_listen_target(target: dict) -> tuple[bool, str]:
+    """
+    Probe a listen target to check if it can be bound successfully.
+
+    Args:
+        target: The listen target dictionary to probe.
+
+    Returns:
+        A tuple containing a boolean indicating success and an error message if any.
+    """
+    family = socket.AF_INET6 if target.get("family") == "ipv6" else socket.AF_INET
+    probe = None
+    try:
+        probe = socket.socket(family, socket.SOCK_STREAM)
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if family == socket.AF_INET6:
+            probe.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+            bind_address = (
+                str(target["address"]),
+                0,
+                0,
+                max(0, int(target.get("scope_id", 0) or 0)),
+            )
+        else:
+            bind_address = (str(target["address"]), 0)
+        probe.bind(bind_address)
+        return True, ""
+    except (OSError, TypeError, ValueError) as exc:
+        return False, str(exc)
+    finally:
+        if probe is not None:
+            probe.close()
+
+
+def enumerate_network_listen_targets() -> list[dict]:
+    """
+    Enumerate all available network listen targets on the system.
+
+    Returns:
+        A list of dictionaries representing the available network listen targets.
+    """
+    if QNetworkInterface is None:
+        return []
+
+    targets = {}
+    for network_interface in QNetworkInterface.allInterfaces():
+        interface_name = str(network_interface.name() or "").strip()
+        if not interface_name:
+            continue
+        interface_label = str(network_interface.humanReadableName() or "").strip()
+        if not interface_label or interface_label == interface_name:
+            interface_label = interface_name
+        else:
+            interface_label = f"{interface_label} [{interface_name}]"
+
+        for entry in network_interface.addressEntries():
+            qt_address = entry.ip()
+            rendered_address = str(qt_address.toString()).strip()
+            address_text, _, scope_name = rendered_address.partition("%")
+            try:
+                address = ipaddress.ip_address(address_text)
+            except ValueError:
+                continue
+            if address.is_loopback or address.is_unspecified or address.is_multicast:
+                continue
+            try:
+                if entry.isLifetimeKnown() and entry.validityLifetime().hasExpired():
+                    continue
+            except AttributeError:
+                pass
+
+            family = "ipv6" if address.version == 6 else "ipv4"
+            scope_id = 0
+            if address.version == 6 and address.is_link_local:
+                try:
+                    scope_id = int(network_interface.index())
+                except (TypeError, ValueError):
+                    scope_id = 0
+            display_address = str(address)
+            if address.version == 6 and address.is_link_local:
+                display_address += f"%{scope_name or interface_name}"
+
+            target = {
+                "mode": "address",
+                "family": family,
+                "address": str(address),
+                "interface": interface_name,
+                "scope_id": scope_id,
+            }
+            target["available"], target["bind_error"] = _probe_listen_target(target)
+            key = _listen_target_identity(target)
+            targets[key] = {
+                "label": f"{display_address} ({interface_label})",
+                "target": target,
+            }
+
+    return sorted(
+        targets.values(),
+        key=lambda item: (
+            0 if item["target"]["family"] == "ipv4" else 1,
+            int(ipaddress.ip_address(item["target"]["address"])),
+            item["target"]["interface"].casefold(),
+        ),
+    )
+
 
 class BusType:
     SESSION = "session"
 
 
 class _QtDBusInterface:
+    """
+    Wrapper class for a Qt D-Bus interface, providing asynchronous method calls.
+    """
+
     def __init__(self, service: str, path: str, interface_name: str, connection):
         assert QDBusInterface is not None
         self._interface = QDBusInterface(service, path, interface_name, connection)
@@ -133,6 +382,9 @@ class _QtDBusInterface:
 
 
 class _QtDBusProxyObject:
+    """
+    Wrapper class for a Qt D-Bus proxy object, providing access to its interfaces.
+    """
     def __init__(self, service: str, path: str, connection):
         self._service = service
         self._path = path
@@ -143,6 +395,10 @@ class _QtDBusProxyObject:
 
 
 class _QtDBusMessageBus:
+    """
+    Wrapper class for the Qt D-Bus message bus, providing connection management and introspection.
+    """
+
     def __init__(self, bus_type=None):
         self._connection = None
 
@@ -388,7 +644,10 @@ class QueueLogHandler:
             return
         self._messages.put(str(message))
 
-    def drain(self) -> list[str]:
+    def emit_bind_failure(self, target: dict) -> None:
+        self._messages.put(("bind_failure", dict(target)))
+
+    def drain(self) -> list[Any]:
         messages = []
         while True:
             try:
@@ -1126,6 +1385,7 @@ def execute_rotator_abort(driver_name: str | None = None) -> bool:
 def load_gui_settings(path: str | Path | None = None):
     config_path = Path(path) if path is not None else GUI_SETTINGS_PATH
     defaults = DEFAULT_GUI_SETTINGS.copy()
+    defaults["listen_target"] = DEFAULT_LISTEN_TARGET.copy()
 
     if not config_path.exists():
         return defaults.copy()
@@ -1160,13 +1420,15 @@ def load_gui_settings(path: str | Path | None = None):
         except (KeyError, TypeError, ValueError):
             pass
 
+    listen_target = _normalize_listen_target(loaded.get("listen_target"), loaded.get("host", HOST))
     return {
         "mount": str(loaded.get("mount", "") or ""),
         "focuser": str(loaded.get("focuser", "") or ""),
         "filter": str(loaded.get("filter", "") or ""),
         "filter_slots": filter_slots,
         "rotator": str(loaded.get("rotator", "") or ""),
-        "host": str(loaded.get("host", "0.0.0.0") or "0.0.0.0"),
+        "host": listen_target["address"],
+        "listen_target": listen_target,
         "port": port_value,
         "heartbeat": bool(loaded.get("heartbeat", False)),
         "requests": bool(loaded.get("requests", False)),
@@ -1201,13 +1463,15 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         except (KeyError, TypeError, ValueError):
             pass
 
+    listen_target = _normalize_listen_target(settings.get("listen_target"), settings.get("host", HOST))
     payload = {
         "mount": str(settings.get("mount", "") or ""),
         "focuser": str(settings.get("focuser", "") or ""),
         "filter": str(settings.get("filter", "") or ""),
         "filter_slots": filter_slots,
         "rotator": str(settings.get("rotator", "") or ""),
-        "host": str(settings.get("host", "0.0.0.0") or "0.0.0.0"),
+        "host": listen_target["address"],
+        "listen_target": listen_target,
         "port": port_value,
         "heartbeat": bool(settings.get("heartbeat", False)),
         "requests": bool(settings.get("requests", False)),
@@ -1356,6 +1620,9 @@ class ReceiverWindow(QMainWindow):
             log_requests=bool(self.gui_settings.get("requests", False)),
             log_actions=bool(self.gui_settings.get("actions", False)),
             log_dbus=bool(self.gui_settings.get("dbus", False)),
+            family=self.gui_settings.get("listen_target", DEFAULT_LISTEN_TARGET).get("family", "ipv4"),
+            scope_id=self.gui_settings.get("listen_target", DEFAULT_LISTEN_TARGET).get("scope_id", 0),
+            interface_name=self.gui_settings.get("listen_target", DEFAULT_LISTEN_TARGET).get("interface", ""),
             log_callback=self.log_queue.emit,
         )
         self.receiver_thread = None
@@ -1390,7 +1657,15 @@ class ReceiverWindow(QMainWindow):
         self.filter_slots_edit.setPlaceholderText("0")
         self.rotator_combo = QComboBox()
         self.rotator_combo.addItems(["Not scanned", "Rotator 1", "Rotator 2"])
-        self.host_edit = QLineEdit(str(self.gui_settings.get("host", "0.0.0.0")))
+        self.listen_combo = QComboBox()
+        self.listen_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.listen_refresh_button = QPushButton()
+        self.listen_refresh_button.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
+        )
+        self.listen_refresh_button.setToolTip("Rescan network addresses")
+        self.listen_refresh_button.setAccessibleName("Rescan network addresses")
+        self.listen_refresh_button.setFixedSize(32, 30)
         self.port_edit = QLineEdit(str(self.gui_settings.get("port", 50007)))
 
         self.heartbeat_checkbox = QCheckBox("Heartbeat")
@@ -1415,7 +1690,8 @@ class ReceiverWindow(QMainWindow):
         form_layout.addRow("Filter Wheel", filter_row)
         form_layout.addRow("Rotator", self.rotator_combo)
         host_port_row = QHBoxLayout()
-        host_port_row.addWidget(self.host_edit)
+        host_port_row.addWidget(self.listen_combo, 1)
+        host_port_row.addWidget(self.listen_refresh_button)
         host_port_row.addWidget(self.port_edit)
         form_layout.addRow("Listening IP / Port", host_port_row)
         logs_row = QHBoxLayout()
@@ -1460,6 +1736,7 @@ class ReceiverWindow(QMainWindow):
         main_layout.addWidget(self.console)
         main_layout.addLayout(console_button_row)
 
+        self._refresh_listening_addresses(self.gui_settings.get("listen_target"))
         self.restore_saved_values()
         self.mount_combo.currentIndexChanged.connect(self._sync_active_indi_devices)
         self.focuser_combo.currentIndexChanged.connect(self._sync_active_indi_devices)
@@ -1469,6 +1746,7 @@ class ReceiverWindow(QMainWindow):
         self.requests_checkbox.toggled.connect(self.on_requests_toggled)
         self.actions_checkbox.toggled.connect(self.on_actions_toggled)
         self.dbus_checkbox.toggled.connect(self.on_dbus_toggled)
+        self.listen_refresh_button.clicked.connect(self.on_rescan_network_addresses)
         self.start_receiver()
         self.scan_button.clicked.connect(self.on_scan_indi)
         self.restart_button.clicked.connect(self.on_restart)
@@ -1484,6 +1762,9 @@ class ReceiverWindow(QMainWindow):
 
     def _flush_log_queue(self):
         for message in self.log_queue.drain():
+            if isinstance(message, tuple) and len(message) == 2 and message[0] == "bind_failure":
+                self._mark_listen_target_unavailable(message[1])
+                continue
             self._append_log(message)
 
     def log(self, message: str):
@@ -1543,6 +1824,139 @@ class ReceiverWindow(QMainWindow):
             else:
                 set_active_indi_device(kind, text)
 
+    def _selected_listen_target(self):
+        target = self.listen_combo.currentData()
+        if isinstance(target, dict):
+            return target
+        return self.gui_settings.get("listen_target", DEFAULT_LISTEN_TARGET.copy())
+
+    def _revalidate_listen_target(self, target):
+        if not isinstance(target, dict) or target.get("mode") == "unavailable":
+            self.log("selected listening address is unavailable; rescan or choose another address")
+            return None
+        available, bind_error = _probe_listen_target(target)
+        if not available:
+            failed_target = dict(target)
+            failed_target.update({"available": False, "bind_error": bind_error})
+            self._mark_listen_target_unavailable(failed_target)
+            self.log(f"selected listening address is no longer bindable: {bind_error}")
+            return None
+        validated_target = dict(target)
+        validated_target.update({"available": True, "bind_error": ""})
+        return validated_target
+
+    def _refresh_listening_addresses(self, preferred_target=None):
+        combo = self.listen_combo
+        current_target = preferred_target or combo.currentData()
+        if not isinstance(current_target, dict):
+            current_target = self.gui_settings.get("listen_target", DEFAULT_LISTEN_TARGET)
+        current_target = _normalize_listen_target(
+            current_target,
+            self.gui_settings.get("host", HOST),
+        )
+        preferred_identity = _listen_target_identity(current_target)
+        discovered = enumerate_network_listen_targets()
+        discovered_identities = {
+            _listen_target_identity(item["target"]) for item in discovered
+        }
+        combo.blockSignals(True)
+        combo.clear()
+        selected_index = -1
+
+        def add_header(text):
+            combo.addItem(text)
+            item = combo.model().item(combo.count() - 1)
+            if item is not None:
+                item.setEnabled(False)
+
+        def add_target(label, target):
+            nonlocal selected_index
+            target = dict(target)
+            if "available" not in target:
+                target["available"], target["bind_error"] = _probe_listen_target(target)
+            if not target.get("available", False) and not label.startswith("Unavailable:"):
+                label = f"Unavailable: {label}"
+            combo.addItem(label, target)
+            item = combo.model().item(combo.count() - 1)
+            if item is not None and not target.get("available", False):
+                item.setEnabled(False)
+                if target.get("bind_error"):
+                    item.setToolTip(str(target["bind_error"]))
+            if _listen_target_identity(target) == preferred_identity:
+                selected_index = combo.count() - 1
+
+        for family, header, local_address, any_address in (
+            ("ipv4", "IPv4", "127.0.0.1", "0.0.0.0"),
+            ("ipv6", "IPv6", "::1", "::"),
+        ):
+            add_header(header)
+            add_target(
+                f"localhost ({local_address})",
+                {"mode": "localhost", "family": family, "address": local_address, "interface": "", "scope_id": 0},
+            )
+            for item in discovered:
+                target = item["target"]
+                if target["family"] == family:
+                    add_target(item["label"], target)
+
+            if (
+                current_target["mode"] == "address"
+                and current_target["family"] == family
+                and preferred_identity not in discovered_identities
+            ):
+                missing_target = dict(current_target)
+                missing_target["available"] = False
+                add_target(
+                    f"Unavailable: {current_target['address']} ({current_target['interface'] or 'saved address'})",
+                    missing_target,
+                )
+
+            add_target(
+                f"All {header} interfaces ({any_address})",
+                {"mode": "all", "family": family, "address": any_address, "interface": "", "scope_id": 0},
+            )
+
+        if current_target["mode"] == "unavailable":
+            missing_target = dict(current_target)
+            missing_target["available"] = False
+            add_target(
+                f"Unavailable: {current_target['address']} (saved setting)",
+                missing_target,
+            )
+
+        if selected_index < 0:
+            selected_index = 0
+            self.log("saved listening address is no longer available; select another address")
+        combo.setCurrentIndex(selected_index)
+        combo.blockSignals(False)
+
+    def _mark_listen_target_unavailable(self, failed_target: dict):
+        failed_identity = _listen_target_identity(failed_target)
+        for index in range(self.listen_combo.count()):
+            target = self.listen_combo.itemData(index)
+            if not isinstance(target, dict) or _listen_target_identity(target) != failed_identity:
+                continue
+            target = dict(target)
+            target["available"] = False
+            target["bind_error"] = str(failed_target.get("bind_error", ""))
+            self.listen_combo.setItemData(index, target)
+            label = self.listen_combo.itemText(index)
+            if not label.startswith("Unavailable:"):
+                self.listen_combo.setItemText(index, f"Unavailable: {label}")
+            item = self.listen_combo.model().item(index)
+            if item is not None:
+                item.setEnabled(False)
+                if target["bind_error"]:
+                    item.setToolTip(target["bind_error"])
+            return
+
+    def on_rescan_network_addresses(self):
+        self._refresh_listening_addresses()
+        if QNetworkInterface is None:
+            self.log("QtNetwork unavailable; no network addresses were scanned")
+        else:
+            self.log("network address scan complete")
+
     def save_settings(self):
         self._sync_active_indi_devices()
         settings = {
@@ -1551,7 +1965,10 @@ class ReceiverWindow(QMainWindow):
             "filter": self.filter_combo.currentText() if self.filter_combo.count() else "",
             "filter_slots": self.filter_slots_edit.text().strip() or 0,
             "rotator": self.rotator_combo.currentText() if self.rotator_combo.count() else "",
-            "host": self.host_edit.text().strip() or "0.0.0.0",
+            "host": str(self._selected_listen_target().get("address", HOST)),
+            "listen_target": _normalize_listen_target(
+                self._selected_listen_target(), self.gui_settings.get("host", HOST)
+            ),
             "port": self.port_edit.text().strip() or "50007",
             "heartbeat": self.heartbeat_checkbox.isChecked(),
             "requests": self.requests_checkbox.isChecked(),
@@ -1610,7 +2027,10 @@ class ReceiverWindow(QMainWindow):
 
     def start_receiver(self):
         # No save_settings() here: combos still hold placeholder items until the INDI scan completes.
-        host = self.host_edit.text().strip() or "0.0.0.0"
+        target = self._revalidate_listen_target(self._selected_listen_target())
+        if target is None:
+            return
+        host = str(target.get("address", HOST))
         port_text = self.port_edit.text().strip() or "50007"
         try:
             port = int(port_text)
@@ -1624,21 +2044,29 @@ class ReceiverWindow(QMainWindow):
             log_requests=self.requests_checkbox.isChecked(),
             log_actions=self.actions_checkbox.isChecked(),
             log_dbus=self.dbus_checkbox.isChecked(),
+            scope_id=int(target.get("scope_id", 0) or 0),
+            interface_name=str(target.get("interface", "")),
+            family=str(target.get("family", "ipv4")),
+            log_callback=self.log_queue.emit,
+            bind_failure_callback=self.log_queue.emit_bind_failure,
         )
         self.receiver_thread = self.receiver.start()
-        self.log(f"listening on {host}:{port}")
+        self.log(f"listener startup requested on {self._format_listen_address(target)}:{port}")
 
     def restart_receiver(self):
+        target = self._revalidate_listen_target(self._selected_listen_target())
+        if target is None:
+            return
+        host = str(target.get("address", HOST))
+        port_text = self.port_edit.text().strip() or "50007"
+        try:
+            port = int(port_text)
+        except ValueError:
+            self.log("invalid port value; using default 50007")
+            port = 50007
         self.receiver.stop()
         self.save_settings()
         self.log("restarting listener...")
-        host = self.host_edit.text().strip() or "0.0.0.0"
-        port_text = self.port_edit.text().strip() or "50007"
-        try:
-            port = int(port_text)
-        except ValueError:
-            self.log("invalid port value; using default 50007")
-            port = 50007
         self.receiver = Receiver(
             host=host,
             port=port,
@@ -1646,9 +2074,24 @@ class ReceiverWindow(QMainWindow):
             log_requests=self.requests_checkbox.isChecked(),
             log_actions=self.actions_checkbox.isChecked(),
             log_dbus=self.dbus_checkbox.isChecked(),
+            scope_id=int(target.get("scope_id", 0) or 0),
+            interface_name=str(target.get("interface", "")),
+            family=str(target.get("family", "ipv4")),
+            log_callback=self.log_queue.emit,
+            bind_failure_callback=self.log_queue.emit_bind_failure,
         )
         self.receiver_thread = self.receiver.start()
-        self.log(f"restarted listener on {host}:{port}")
+        self.log(f"listener restart requested on {self._format_listen_address(target)}:{port}")
+
+    @staticmethod
+    def _format_listen_address(target: dict) -> str:
+        host = str(target.get("address", HOST))
+        if target.get("family") == "ipv6":
+            interface = str(target.get("interface", "")).strip()
+            if interface and ipaddress.ip_address(host).is_link_local:
+                host = f"{host}%{interface}"
+            return f"[{host}]"
+        return host
 
     def on_scan_indi(self):
         if MessageBus is None:
@@ -2173,9 +2616,38 @@ def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown"
 
 # Receiver class for handling incoming connections and dispatching actions.
 class Receiver:
-    def __init__(self, host: str = HOST, port: int = PORT, heartbeat_timeout: float = 5.0, log_heartbeat: bool = False, log_requests: bool = False, log_actions: bool = False, log_dbus: bool = False, log_callback=None):
-        self.host = host
+    def __init__(self, host: str = HOST, port: int = PORT, heartbeat_timeout: float = 5.0, log_heartbeat: bool = False, log_requests: bool = False, log_actions: bool = False, log_dbus: bool = False, log_callback=None, family: str | int | None = None, scope_id: int = 0, interface_name: str = "", bind_failure_callback=None):
+        host = str(host or HOST).strip()
+        host_address, separator, host_scope = host.partition("%")
+        if separator and not scope_id:
+            try:
+                scope_id = int(host_scope)
+            except ValueError:
+                try:
+                    scope_id = socket.if_nametoindex(host_scope)
+                except (AttributeError, OSError):
+                    scope_id = 0
+        if family in {socket.AF_INET, "ipv4"}:
+            self.family = socket.AF_INET
+        elif family in {socket.AF_INET6, "ipv6"}:
+            self.family = socket.AF_INET6
+        else:
+            try:
+                self.family = socket.AF_INET6 if ipaddress.ip_address(host_address).version == 6 else socket.AF_INET
+            except ValueError:
+                self.family = socket.AF_INET
+        if self.family == socket.AF_INET6 and not scope_id and interface_name:
+            try:
+                scope_id = int(interface_name)
+            except ValueError:
+                try:
+                    scope_id = socket.if_nametoindex(interface_name)
+                except (AttributeError, OSError):
+                    scope_id = 0
+        self.host = host_address
         self.port = port
+        self.scope_id = max(0, int(scope_id or 0))
+        self.interface_name = str(interface_name or (host_scope if separator else ""))
         self.heartbeat_timeout = heartbeat_timeout
         self.log_heartbeat = bool(log_heartbeat)
         self.log_requests = bool(log_requests)
@@ -2185,6 +2657,7 @@ class Receiver:
         set_action_logging(self.log_actions)
         set_dbus_logging(self.log_dbus)
         self.log_callback = log_callback
+        self.bind_failure_callback = bind_failure_callback
         self._stop_event = threading.Event()
         self._thread = None
         self._server_socket = None
@@ -2227,19 +2700,51 @@ class Receiver:
             thread.join(timeout=2.0)
 
     def _serve(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        with socket.socket(self.family, socket.SOCK_STREAM) as server:
             self._server_socket = server
             server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
-                server.bind((self.host, self.port))
+                if self.family == socket.AF_INET6:
+                    server.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+                    bind_address = (self.host, self.port, 0, self.scope_id)
+                else:
+                    bind_address = (self.host, self.port)
+                server.bind(bind_address)
             except OSError as exc:
-                self._emit_log(
-                    f"cannot bind {self.host}:{self.port}: {exc}. "
-                    "Another receiver may already be running on this port. Stop it or use another port."
-                )
+                error_code = getattr(exc, "winerror", None) or exc.errno
+                if error_code in {errno.EADDRNOTAVAIL, 10049}:
+                    detail = "the address is not currently assigned to this computer or is no longer available"
+                elif error_code in {errno.EADDRINUSE, 10048}:
+                    detail = "another process may already be using this port"
+                else:
+                    detail = "check the selected address and port"
+                self._emit_log(f"cannot bind {self.host}:{self.port}: {exc}; {detail}")
+                if self.bind_failure_callback is not None:
+                    try:
+                        address = ipaddress.ip_address(self.host)
+                        mode = "all" if address.is_unspecified else "localhost" if address.is_loopback else "address"
+                    except ValueError:
+                        mode = "address"
+                    try:
+                        self.bind_failure_callback({
+                            "mode": mode,
+                            "family": "ipv6" if self.family == socket.AF_INET6 else "ipv4",
+                            "address": self.host,
+                            "interface": self.interface_name,
+                            "scope_id": self.scope_id,
+                            "available": False,
+                            "bind_error": str(exc),
+                        })
+                    except Exception:
+                        pass
                 return
             server.listen(5)
-            self._emit_log(f"listening on {self.host}:{self.port}")
+            display_host = self.host
+            if self.family == socket.AF_INET6:
+                if self.scope_id and "%" not in display_host:
+                    display_host = f"{display_host}%{self.interface_name or self.scope_id}"
+                display_host = f"[{display_host}]"
+            self._emit_log(f"listening on {display_host}:{self.port}")
 
             while not self._stop_event.is_set():
                 try:

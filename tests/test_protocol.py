@@ -1079,6 +1079,8 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("dbus", defaults)
         self.assertIn("word_wrap", defaults)
         self.assertEqual(defaults["host"], "0.0.0.0")
+        self.assertEqual(defaults["listen_target"]["family"], "ipv4")
+        self.assertEqual(defaults["listen_target"]["mode"], "all")
         self.assertEqual(defaults["port"], 50007)
         self.assertFalse(defaults["heartbeat"])
         self.assertFalse(defaults["requests"])
@@ -1116,6 +1118,144 @@ class ProtocolTests(unittest.TestCase):
         finally:
             if path.exists():
                 path.unlink()
+
+    def test_receiver_legacy_ipv6_host_migrates_to_listen_target(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "receiver.json"
+            path.write_text('{"host":"::"}\n', encoding="utf-8")
+            loaded = receiver.load_gui_settings(path)
+
+        self.assertEqual(loaded["listen_target"]["mode"], "all")
+        self.assertEqual(loaded["listen_target"]["family"], "ipv6")
+        self.assertEqual(loaded["host"], "::")
+
+    def test_receiver_listen_target_round_trips_ipv6_scope(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "receiver.json"
+            target = {
+                "mode": "address",
+                "family": "ipv6",
+                "address": "fe80::1",
+                "interface": "test-interface",
+                "scope_id": 7,
+            }
+            receiver.save_gui_settings({"listen_target": target}, path)
+            loaded = receiver.load_gui_settings(path)
+
+        self.assertEqual(loaded["listen_target"], target)
+
+    def test_network_listen_target_scan_keeps_link_local_scope(self):
+        class FakeAddress:
+            def __init__(self, value):
+                self.value = value
+
+            def toString(self):
+                return self.value
+
+        class FakeEntry:
+            def __init__(self, value):
+                self.value = value
+
+            def ip(self):
+                return FakeAddress(self.value)
+
+        class FakeInterface:
+            def name(self):
+                return "test0"
+
+            def humanReadableName(self):
+                return "Test Network"
+
+            def index(self):
+                return 7
+
+            def addressEntries(self):
+                return [FakeEntry("192.0.2.4"), FakeEntry("fe80::1%test0"), FakeEntry("::1")]
+
+        class FakeNetworkInterface:
+            @staticmethod
+            def allInterfaces():
+                return [FakeInterface()]
+
+        with patch.object(receiver, "QNetworkInterface", FakeNetworkInterface):
+            targets = receiver.enumerate_network_listen_targets()
+
+        self.assertEqual(len(targets), 2)
+        ipv6_target = next(item["target"] for item in targets if item["target"]["family"] == "ipv6")
+        self.assertEqual(ipv6_target["scope_id"], 7)
+        ipv6_label = next(item["label"] for item in targets if item["target"] == ipv6_target)
+        self.assertIn("fe80::1%test0", ipv6_label)
+
+    def test_network_listen_target_scan_marks_unbindable_addresses(self):
+        class FakeAddress:
+            def toString(self):
+                return "192.0.2.4"
+
+        class FakeEntry:
+            def ip(self):
+                return FakeAddress()
+
+        class FakeInterface:
+            def name(self):
+                return "test0"
+
+            def humanReadableName(self):
+                return "Test Network"
+
+            def addressEntries(self):
+                return [FakeEntry()]
+
+        class FakeNetworkInterface:
+            @staticmethod
+            def allInterfaces():
+                return [FakeInterface()]
+
+        with patch.object(receiver, "QNetworkInterface", FakeNetworkInterface), \
+                patch.object(receiver, "_probe_listen_target", return_value=(False, "not assigned")):
+            targets = receiver.enumerate_network_listen_targets()
+
+        self.assertEqual(len(targets), 1)
+        self.assertFalse(targets[0]["target"]["available"])
+        self.assertEqual(targets[0]["target"]["bind_error"], "not assigned")
+
+    def test_network_listen_target_scan_skips_expired_address_lifetimes(self):
+        class FakeAddress:
+            def toString(self):
+                return "2001:db8::4"
+
+        class FakeTimer:
+            def hasExpired(self):
+                return True
+
+        class FakeEntry:
+            def ip(self):
+                return FakeAddress()
+
+            def isLifetimeKnown(self):
+                return True
+
+            def validityLifetime(self):
+                return FakeTimer()
+
+        class FakeInterface:
+            def name(self):
+                return "test0"
+
+            def humanReadableName(self):
+                return "Test Network"
+
+            def addressEntries(self):
+                return [FakeEntry()]
+
+        class FakeNetworkInterface:
+            @staticmethod
+            def allInterfaces():
+                return [FakeInterface()]
+
+        with patch.object(receiver, "QNetworkInterface", FakeNetworkInterface):
+            targets = receiver.enumerate_network_listen_targets()
+
+        self.assertEqual(targets, [])
 
     def test_dpad_to_abstract_action_mapping(self):
         action_map = {"dpad_down": "MOUNT_SOUTH"}
@@ -1388,6 +1528,176 @@ class ProtocolTests(unittest.TestCase):
 
         self.assertTrue(any("connected from" in message for message in messages))
         dbus_interface.assert_not_called()
+
+    def test_receiver_accepts_ipv6_connections_on_ipv6_only_socket(self):
+        try:
+            with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as probe:
+                probe.bind(("::1", 0))
+        except OSError as exc:
+            self.skipTest(f"IPv6 loopback is unavailable: {exc}")
+
+        listening = threading.Event()
+        messages = []
+
+        def collect_log(message):
+            messages.append(message)
+            if "listening on [::1]:" in message:
+                listening.set()
+
+        instance = receiver.Receiver(
+            host="::1",
+            port=0,
+            family="ipv6",
+            log_callback=collect_log,
+        )
+        try:
+            instance.start()
+            self.assertTrue(listening.wait(2))
+            port = instance._server_socket.getsockname()[1]
+            self.assertEqual(
+                instance._server_socket.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY),
+                1,
+            )
+            with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as client:
+                client.settimeout(2)
+                client.connect(("::1", port))
+                client.sendall(b'{"type":"heartbeat","ts":1,"device":"gamepad","status":"alive"}\n')
+        finally:
+            instance.stop()
+
+    def test_receiver_reports_bind_failure_to_gui_callback(self):
+        class FakeSocket:
+            def __init__(self, *args):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.close()
+
+            def setsockopt(self, *args):
+                pass
+
+            def bind(self, address):
+                raise OSError(10049, "address unavailable")
+
+            def close(self):
+                pass
+
+        failure_reported = threading.Event()
+        failures = []
+
+        def report_failure(target):
+            failures.append(target)
+            failure_reported.set()
+
+        instance = receiver.Receiver(
+            host="203.0.113.4",
+            port=50007,
+            bind_failure_callback=report_failure,
+        )
+        with patch.object(receiver.socket, "socket", FakeSocket):
+            try:
+                instance.start()
+                self.assertTrue(failure_reported.wait(2))
+            finally:
+                instance.stop()
+
+        self.assertEqual(failures[0]["address"], "203.0.113.4")
+        self.assertEqual(failures[0]["family"], "ipv4")
+        self.assertFalse(failures[0]["available"])
+
+    def test_gui_marks_failed_listen_target_unavailable(self):
+        class FakeItem:
+            def __init__(self):
+                self.enabled = True
+                self.tooltip = ""
+
+            def setEnabled(self, enabled):
+                self.enabled = enabled
+
+            def setToolTip(self, tooltip):
+                self.tooltip = tooltip
+
+        class FakeModel:
+            def __init__(self, item):
+                self.item_value = item
+
+            def item(self, index):
+                return self.item_value if index == 0 else None
+
+        class FakeCombo:
+            def __init__(self, target):
+                self.target = target
+                self.text = "192.0.2.4 (Test Network)"
+                self.fake_item = FakeItem()
+
+            def count(self):
+                return 1
+
+            def itemData(self, index):
+                return self.target if index == 0 else None
+
+            def setItemData(self, index, value):
+                if index == 0:
+                    self.target = value
+
+            def itemText(self, index):
+                return self.text
+
+            def setItemText(self, index, value):
+                if index == 0:
+                    self.text = value
+
+            def model(self):
+                return FakeModel(self.fake_item)
+
+        target = {
+            "mode": "address",
+            "family": "ipv4",
+            "address": "192.0.2.4",
+            "interface": "test0",
+            "scope_id": 0,
+            "available": True,
+        }
+        window = receiver.ReceiverWindow.__new__(receiver.ReceiverWindow)
+        window.listen_combo = FakeCombo(target)
+        window.log_queue = receiver.QueueLogHandler()
+        window.log_queue.emit_bind_failure({
+            **target,
+            "available": False,
+            "bind_error": "address unavailable",
+        })
+
+        window._flush_log_queue()
+
+        self.assertFalse(window.listen_combo.target["available"])
+        self.assertTrue(window.listen_combo.text.startswith("Unavailable:"))
+        self.assertFalse(window.listen_combo.fake_item.enabled)
+        self.assertEqual(window.listen_combo.fake_item.tooltip, "address unavailable")
+
+    def test_restart_revalidation_disables_address_that_became_unbindable(self):
+        target = {
+            "mode": "address",
+            "family": "ipv6",
+            "address": "2001:db8::4",
+            "interface": "test0",
+            "scope_id": 0,
+            "available": True,
+        }
+        window = receiver.ReceiverWindow.__new__(receiver.ReceiverWindow)
+        marked_unavailable = []
+        window._mark_listen_target_unavailable = marked_unavailable.append
+        messages = []
+        window.log = messages.append
+
+        with patch.object(receiver, "_probe_listen_target", return_value=(False, "address expired")):
+            validated = window._revalidate_listen_target(target)
+
+        self.assertIsNone(validated)
+        self.assertEqual(marked_unavailable[0]["bind_error"], "address expired")
+        self.assertIn("address expired", messages[-1])
 
     def test_indi_scan_returns_empty_when_dbus_is_unavailable(self):
         with patch.object(receiver, "MessageBus", None), \
