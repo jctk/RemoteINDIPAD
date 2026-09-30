@@ -287,14 +287,14 @@ RemoteINDIPAD receiver converts the "Actions" received from RemoteINDIPAD sender
 | Focuser | The name of an available focuser INDI driver. Select one from the list when multiple drivers are available. |
 | Filter Wheel | The name of an available filter wheel INDI driver. Select one from the list when multiple drivers are available. The number after the INDI driver name is the number of filter wheel slots. |
 | Rotator | The name of an available rotator INDI driver. Select one from the list when multiple drivers are available. |
-| Listening IP / Port | The IP address and port of the network interface used for connections. The default IP address is 0.0.0.0, which uses all network interfaces. The default port is 50007. |
+| Listening IP / Port | Select an IPv4 or IPv6 address to listen on. The list includes localhost, detected local addresses, and an all-interfaces address for each IP version. Addresses that cannot be bound are shown as unavailable and disabled. The default is all IPv4 interfaces (`0.0.0.0`); the default port is 50007. Use the circular-arrow button to rescan network addresses. |
 | Logs - Heartbeat | Display received heartbeats in the console. |
 | Logs - Requests | Display JSON packets received from the sender in the console. |
 | Logs - Actions | Display operation logs beginning with `action`, `dispatch`, or `executed` in the console. |
 | Logs - D-BUS | Display D-BUS calls and returned results in the console. |
 | Logs - Word Wrap | Wrap console log lines to the window width. |
 | Scan INDI | Scan for available INDI drivers and populate each driver list. |
-| Restart | Restart the listener. Use this after changing the IP address or port. |
+| Restart | Restart the listener. Use this after changing the selected address or port. The selected address is checked again before restarting. |
 | Close | Close RemoteINDIPAD receiver. |
 | INDIPAD console | Display operation and communication status. |
 | Clear | Clear the console. |

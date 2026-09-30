@@ -290,14 +290,14 @@ RemoteINDIPAD receiverはRemoteINDIPAD senderからNetwork経由で受信した"
 | Focuser | 利用可能な Focuser の INDIドライバー名。複数ある場合はリストから選択する。 |
 | Filter Wheel | 利用可能な Filter Wheel の INDIドライバー名。複数ある場合はリストから選択する。INDIドライバー名の後ろの数値は Filter Wheel のスロット数 |
 | Rotator | 利用可能な Rotator の INDIドライバー名。複数ある場合はリストから選択する。 |
-| Listening IP / Port | 接続用の Network Interfaceの IP アドレスとポート番号。IPアドレスは0.0.0.0がデフォルトですべてのNetwork Interfaceを使用する。ポート番号のデフォルトは50007。 |
+| Listening IP / Port | 待受に使用するIPv4またはIPv6アドレスを選択する。リストにはlocalhost、検出されたローカルIPアドレス、各IPバージョンの「すべてのインターフェース」が表示される。bindできないアドレスはUnavailableとして表示され、選択できない。デフォルトはIPv4のすべてのインターフェース（`0.0.0.0`）。ポート番号のデフォルトは50007。右側の丸矢印ボタンでネットワークアドレスを再スキャンする。 |
 | Logs - Heartbeat | 受信したHeartbeatを Console に表示する。 |
 | Logs - Requests | 送信側から受信した JSON パケットを Console に表示する。 |
 | Logs - Actions | `action`、`dispatch`、`executed` で始まる操作ログを Console に表示する。 |
 | Logs - D-BUS | D-BUS の呼び出し内容と返却結果を Console に表示する。 |
 | Logs - Word Wrap | コンソールのログをウィンドウ幅に合わせて折り返す。 |
 | Scan INDI | 利用可能なINDIドライバーをスキャンし各ドライバーのリストに設定する。 |
-| Restart | 接続待ちの再スタート。IP / Port を変更した場合に使用する。 |
+| Restart | 接続待ちを再スタートする。選択したアドレスまたはポートを変更した場合に使用する。再スタート直前にもアドレスを再検査する。 |
 | Close | RemoteINDIPAD receiver を閉じる |
 | INDIPAD console | 操作や通信の状態を表示する。 |
 | Clear | コンソールをクリアする。 |
