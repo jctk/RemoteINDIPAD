@@ -647,6 +647,9 @@ class QueueLogHandler:
     def emit_bind_failure(self, target: dict) -> None:
         self._messages.put(("bind_failure", dict(target)))
 
+    def emit_status(self, receiver, status: str) -> None:
+        self._messages.put(("receiver_status", receiver, status))
+
     def drain(self) -> list[Any]:
         messages = []
         while True:
@@ -1667,6 +1670,9 @@ class ReceiverWindow(QMainWindow):
         self.listen_refresh_button.setAccessibleName("Rescan network addresses")
         self.listen_refresh_button.setFixedSize(32, 30)
         self.port_edit = QLineEdit(str(self.gui_settings.get("port", 50007)))
+        self.service_status_label = QLabel("---")
+        self.service_status_label.setAlignment(Qt.AlignCenter)
+        self.service_status_label.setMinimumWidth(110)
 
         self.heartbeat_checkbox = QCheckBox("Heartbeat")
         self.heartbeat_checkbox.setChecked(bool(self.gui_settings.get("heartbeat", False)))
@@ -1693,6 +1699,7 @@ class ReceiverWindow(QMainWindow):
         host_port_row.addWidget(self.listen_combo, 1)
         host_port_row.addWidget(self.listen_refresh_button)
         host_port_row.addWidget(self.port_edit)
+        host_port_row.addWidget(self.service_status_label)
         form_layout.addRow("Listening IP / Port", host_port_row)
         logs_row = QHBoxLayout()
         for checkbox in (
@@ -1764,6 +1771,10 @@ class ReceiverWindow(QMainWindow):
         for message in self.log_queue.drain():
             if isinstance(message, tuple) and len(message) == 2 and message[0] == "bind_failure":
                 self._mark_listen_target_unavailable(message[1])
+                continue
+            if isinstance(message, tuple) and len(message) == 3 and message[0] == "receiver_status":
+                if message[1] is self.receiver:
+                    self.service_status_label.setText(message[2])
                 continue
             self._append_log(message)
 
@@ -2049,6 +2060,7 @@ class ReceiverWindow(QMainWindow):
             family=str(target.get("family", "ipv4")),
             log_callback=self.log_queue.emit,
             bind_failure_callback=self.log_queue.emit_bind_failure,
+            status_callback=self.log_queue.emit_status,
         )
         self.receiver_thread = self.receiver.start()
         self.log(f"listener startup requested on {self._format_listen_address(target)}:{port}")
@@ -2057,6 +2069,8 @@ class ReceiverWindow(QMainWindow):
         target = self._revalidate_listen_target(self._selected_listen_target())
         if target is None:
             return
+        self.service_status_label.setText("---")
+        self.service_status_label.repaint()
         host = str(target.get("address", HOST))
         port_text = self.port_edit.text().strip() or "50007"
         try:
@@ -2079,6 +2093,7 @@ class ReceiverWindow(QMainWindow):
             family=str(target.get("family", "ipv4")),
             log_callback=self.log_queue.emit,
             bind_failure_callback=self.log_queue.emit_bind_failure,
+            status_callback=self.log_queue.emit_status,
         )
         self.receiver_thread = self.receiver.start()
         self.log(f"listener restart requested on {self._format_listen_address(target)}:{port}")
@@ -2616,7 +2631,7 @@ def dispatch_abstract_action(action: str, pressed: bool, source: str = "unknown"
 
 # Receiver class for handling incoming connections and dispatching actions.
 class Receiver:
-    def __init__(self, host: str = HOST, port: int = PORT, heartbeat_timeout: float = 5.0, log_heartbeat: bool = False, log_requests: bool = False, log_actions: bool = False, log_dbus: bool = False, log_callback=None, family: str | int | None = None, scope_id: int = 0, interface_name: str = "", bind_failure_callback=None):
+    def __init__(self, host: str = HOST, port: int = PORT, heartbeat_timeout: float = 5.0, log_heartbeat: bool = False, log_requests: bool = False, log_actions: bool = False, log_dbus: bool = False, log_callback=None, family: str | int | None = None, scope_id: int = 0, interface_name: str = "", bind_failure_callback=None, status_callback=None):
         host = str(host or HOST).strip()
         host_address, separator, host_scope = host.partition("%")
         if separator and not scope_id:
@@ -2658,6 +2673,7 @@ class Receiver:
         set_dbus_logging(self.log_dbus)
         self.log_callback = log_callback
         self.bind_failure_callback = bind_failure_callback
+        self.status_callback = status_callback
         self._stop_event = threading.Event()
         self._thread = None
         self._server_socket = None
@@ -2673,6 +2689,13 @@ class Receiver:
             except Exception:
                 pass
         print(str(message), flush=True)
+
+    def _emit_status(self, status: str) -> None:
+        if self.status_callback is not None:
+            try:
+                self.status_callback(self, status)
+            except Exception:
+                pass
 
     @staticmethod
     def heartbeat_is_lost(last_seen: float, heartbeat_timeout: float, now: Optional[float] = None) -> bool:
@@ -2739,6 +2762,7 @@ class Receiver:
                         pass
                 return
             server.listen(5)
+            self._emit_status("LISTEN")
             display_host = self.host
             if self.family == socket.AF_INET6:
                 if self.scope_id and "%" not in display_host:
@@ -2756,6 +2780,7 @@ class Receiver:
                     continue
 
                 with conn:
+                    self._emit_status(f"ESTABLISHED {addr[0]}")
                     self._emit_log(f"connected from {addr}")
                     conn.settimeout(0.5)
                     heartbeat_lost = False
@@ -2824,6 +2849,8 @@ class Receiver:
                                 print_debug_json("json", obj)
                             except json.JSONDecodeError as exc:
                                 self._emit_log(f"invalid json: {line} ({exc})")
+                if not self._stop_event.is_set():
+                    self._emit_status("LISTEN")
 
 
 if __name__ == "__main__":

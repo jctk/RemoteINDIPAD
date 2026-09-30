@@ -1,5 +1,6 @@
 import asyncio
 import io
+import queue
 import socket
 import tempfile
 import threading
@@ -14,6 +15,36 @@ import remote_indipad_sender as sender
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_receiver_reports_connection_state(self):
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()
+
+        statuses = queue.Queue()
+        server = receiver.Receiver(
+            host="127.0.0.1",
+            port=port,
+            family="ipv4",
+            status_callback=lambda _receiver, status: statuses.put(status),
+        )
+        server.start()
+        client = None
+        try:
+            self.assertEqual(statuses.get(timeout=3), "LISTEN")
+            client = socket.create_connection(("127.0.0.1", port), timeout=3)
+            self.assertEqual(
+                statuses.get(timeout=3),
+                f"ESTABLISHED {client.getsockname()[0]}",
+            )
+            client.close()
+            client = None
+            self.assertEqual(statuses.get(timeout=3), "LISTEN")
+        finally:
+            if client is not None:
+                client.close()
+            server.stop()
+
     def test_round_trip_serialization(self):
         original = protocol.build_action_payload(action="MOUNT_NORTH", pressed=True, source="axis")
         serialized = protocol.serialize_message(original)
