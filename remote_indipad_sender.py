@@ -57,7 +57,7 @@ import remote_indipad_protocol as protocol
 from remote_indipad_paths import get_installed_package_version, get_user_config_dir
 
 # Configuration and Constants
-VERSION = "0.9.0"
+VERSION = "0.9.1b1"
 HOST = "127.0.0.1"
 PORT = 50007
 DEADZONE = 0.6

@@ -32,9 +32,9 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
         run: |
-          python -c "import os, tomllib; from packaging.version import Version; version = Version(tomllib.load(open('pyproject.toml', 'rb'))['project']['version']); tag = Version(os.environ['RELEASE_TAG'].removeprefix('v')); assert tag == version, f'Release tag {tag} does not match package version {version}'"
+          python -c "import os; from pathlib import Path; from packaging.version import Version; version = Version(Path('VERSION').read_text().strip()); tag = Version(os.environ['RELEASE_TAG'].removeprefix('v')); assert tag == version, f'Release tag {tag} does not match package version {version}'"
 
-      - name: Build wheel
+      - name: Build sender and receiver wheels
         run: python -m build --wheel
 
       - name: Upload wheel to GitHub Release

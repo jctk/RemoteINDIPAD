@@ -12,7 +12,9 @@ def get_user_config_dir() -> Path:
 
 
 def get_installed_package_version() -> str | None:
-    try:
-        return version("RemoteINDIPAD")
-    except PackageNotFoundError:
-        return None
+    for distribution in ("RemoteINDIPAD-Sender", "RemoteINDIPAD-Receiver", "RemoteINDIPAD"):
+        try:
+            return version(distribution)
+        except PackageNotFoundError:
+            continue
+    return None

@@ -61,7 +61,7 @@ try:
 except ImportError:  # pragma: no cover - QtNetwork is unavailable without PySide6
     QNetworkInterface = None
 
-VERSION = "0.9.0"
+VERSION = "0.9.1b1"
 HOST = "0.0.0.0"
 PORT = 50007
 DEFAULT_LISTEN_TARGET = {

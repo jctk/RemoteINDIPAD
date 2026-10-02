@@ -1,34 +1,4 @@
 [build-system]
 requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "RemoteINDIPAD"
-version = "0.9.0b8"
-description = "Gamepad-based remote control for KStars, Ekos, and INDI"
-readme = "README.md"
-requires-python = ">=3.10"
-dependencies = [
-    "pygame",
-    "PySide6",
-]
-
-[project.urls]
-Homepage = "https://github.com/jctk/RemoteINDIPAD"
-Issues = "https://github.com/jctk/RemoteINDIPAD/issues"
-
-[project.scripts]
-remote_indipad_sender = "remote_indipad_sender:run_gui"
-remote_indipad_receiver = "remote_indipad_receiver:run_gui"
-
-[tool.setuptools]
-py-modules = [
-    "remote_indipad_paths",
-    "remote_indipad_protocol",
-    "remote_indipad_receiver",
-    "remote_indipad_sender",
-]
-
-[tool.setuptools.data-files]
-"share/RemoteINDIPAD" = ["gamepad_profiles.json"]
-"share/RemoteINDIPAD/resources" = ["resources/icon.png"]
+build-backend = "build_backend"
+backend-path = ["."]

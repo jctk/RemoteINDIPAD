@@ -99,7 +99,18 @@ Windows に接続したゲームパッドの入力を、LAN 経由で Linux（St
 
 ### ダウンロード - ホイールファイル
 
-[Releases](https://github.com/jctk/RemoteINDIPAD/releases) から `remoteindipad-<バージョン番号>-py3-none-any.whl` をダウンロードしてください。
+[Releases](https://github.com/jctk/RemoteINDIPAD/releases) から使用する OS に対応した wheel をダウンロードしてください。
+
+- Windows（Sender）: `remoteindipad_sender-<バージョン番号>-py3-none-any.whl`
+- Linux（Receiver）: `remoteindipad_receiver-<バージョン番号>-py3-none-any.whl`
+
+wheel は OS ごとに分かれており、Windows 用には Sender と `gamepad_profiles.json`、Linux 用には Receiver のみが含まれます。
+リポジトリのルートで `python -m build --wheel` を一度実行すると、`dist` フォルダーに Sender と Receiver の両方の wheel が作成されます。
+
+```powershell
+python -m pip install --upgrade build
+python -m build --wheel
+```
 
 ### インストール - pip install
 
@@ -113,8 +124,8 @@ cd <導入先ディレクトリ>
 python -m venv .venv
 source .venv/bin/activate
 
-# ホイールファイルからのインストール
-pip install <ダウンロードパス>/remoteindipad-<バージョン番号>-py3-none-any.whl
+# Linux 用 Receiver wheel のインストール
+pip install <ダウンロードパス>/remoteindipad_receiver-<バージョン番号>-py3-none-any.whl
 ```
 
 ```PowerShell
@@ -125,8 +136,8 @@ cd <導入先ディレクトリ>
 python -m venv .venv
 .venv/script/activate.ps1
 
-# ホイールファイルからのインストール
-pip install <ダウンロードパス>/remoteindipad-<バージョン番号>-py3-none-any.whl
+# Windows 用 Sender wheel のインストール
+pip install <ダウンロードパス>/remoteindipad_sender-<バージョン番号>-py3-none-any.whl
 ```
 
 ```bash
@@ -137,14 +148,15 @@ cd <導入先ディレクトリ>
 uv venv --python 3.13 --seed .venv
 source .venv/bin/activate
 
-# ホイールファイルからのインストール
-pip install <ダウンロードパス>/remoteindipad-<バージョン番号>-py3-none-any.whl
+# Linux 用 Receiver wheel のインストール
+pip install <ダウンロードパス>/remoteindipad_receiver-<バージョン番号>-py3-none-any.whl
 ```
 
-- ホイールファイルをダウンロードせずに直接ファイルのリンクを指定する場合は前述の手順の `pip install` の行を以下の内容で置き換えてください。
+- wheel をダウンロードせずに直接 URL を指定する場合は、OS に対応した wheel の URL を指定してください。
 
 ```bash
-pip install https://github.com/jctk/RemoteINDIPAD/releases/download/<バージョンタグ>/remoteindipad-<バージョン番号>-py3-none-any.whl
+# Linux 用 Receiver の例
+pip install https://github.com/jctk/RemoteINDIPAD/releases/download/<バージョンタグ>/remoteindipad_receiver-<バージョン番号>-py3-none-any.whl
 ```
 
 

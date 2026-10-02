@@ -98,7 +98,18 @@ Download `RemoteINDIPAD-windows-x64.zip` for Windows and `RemoteINDIPAD-linux-aa
 
 ### Download the Wheel File
 
-Download `remoteindipad-<version>-py3-none-any.whl` from [Releases](https://github.com/jctk/RemoteINDIPAD/releases).
+Download the wheel for the OS you intend to use from [Releases](https://github.com/jctk/RemoteINDIPAD/releases).
+
+- Windows (Sender): `remoteindipad_sender-<version>-py3-none-any.whl`
+- Linux (Receiver): `remoteindipad_receiver-<version>-py3-none-any.whl`
+
+The wheels are split by OS: the Windows wheel contains the sender and `gamepad_profiles.json`; the Linux wheel contains only the receiver.
+Run `python -m build --wheel` once from the repository root to create both wheels in the `dist` directory:
+
+```powershell
+python -m pip install --upgrade build
+python -m build --wheel
+```
 
 ### Install with pip
 
@@ -112,8 +123,8 @@ cd <installation-directory>
 python -m venv .venv
 source .venv/bin/activate
 
-# Install from the wheel file
-pip install <path-to-downloaded-wheel>/remoteindipad-<version>-py3-none-any.whl
+# Install the Linux Receiver wheel
+pip install <path-to-downloaded-wheel>/remoteindipad_receiver-<version>-py3-none-any.whl
 ```
 
 ```powershell
@@ -124,8 +135,8 @@ cd <installation-directory>
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 
-# Install from the wheel file
-pip install <path-to-downloaded-wheel>/remoteindipad-<version>-py3-none-any.whl
+# Install the Windows Sender wheel
+pip install <path-to-downloaded-wheel>/remoteindipad_sender-<version>-py3-none-any.whl
 ```
 
 ```bash
@@ -136,14 +147,15 @@ cd <installation-directory>
 uv venv --python 3.13 --seed .venv
 source .venv/bin/activate
 
-# Install from the wheel file
-pip install <path-to-downloaded-wheel>/remoteindipad-<version>-py3-none-any.whl
+# Install the Linux Receiver wheel
+pip install <path-to-downloaded-wheel>/remoteindipad_receiver-<version>-py3-none-any.whl
 ```
 
-- To install directly from the wheel URL without downloading the file, replace the `pip install` line above with:
+- To install directly from a wheel URL without downloading it, use the wheel for the target OS:
 
 ```bash
-pip install https://github.com/jctk/RemoteINDIPAD/releases/download/<release-tag>/remoteindipad-<version>-py3-none-any.whl
+# Example: Linux Receiver
+pip install https://github.com/jctk/RemoteINDIPAD/releases/download/<release-tag>/remoteindipad_receiver-<version>-py3-none-any.whl
 ```
 
 ### Launching the Programs
