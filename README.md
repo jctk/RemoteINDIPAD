@@ -60,7 +60,7 @@ Three distribution formats are available. Choose whichever suits you best.
 
 - The executable format consists of files created with PyInstaller from the script-format files described below, allowing them to be run as single files.
 - No additional files are required. (This has not been thoroughly verified.)
-- Builds are available for Windows x64 and Linux aarch64.
+- Builds are available for Windows x64, Linux aarch64, and Linux x64.
 - The Linux aarch64 build is intended for Raspberry Pi devices running StellarMate OS and similar systems.
 
 ### Download the Executable Archive
@@ -72,22 +72,23 @@ Download `RemoteINDIPAD-windows-x64.zip` for Windows and `RemoteINDIPAD-linux-aa
 1. On Windows, extract `RemoteINDIPAD-windows-x64.zip`, and place `remote_indipad_sender.exe` and `gamepad_profiles.json` in the same folder of your choice.
 2. On StellarMate OS, extract `RemoteINDIPAD-linux-aarch64.tar.gz`, and place `remote_indipad_receiver` in a folder of your choice.
 
-### Uninstallation
+### Launching the Programs
 
-- Delete the files you installed.
+- For usage instructions other than how to launch the programs, see [Usage](#usage).
 
-### Usage
+#### Windows
 
-1. Start KStars on StellarMate OS and start the Ekos Profile. If you are using a mount, unpark it first.
-1. Start `remote_indipad_receiver` on StellarMate OS.
-1. The device names from the started Ekos Profile are displayed in the Mount / Focuser / Filter Wheel / Rotator dropdown lists. If multiple devices of the same type are connected, select one manually from the appropriate dropdown list.
-1. Connect the GAMEPAD to the Windows PC.
-1. Start `remote_indipad_sender.exe` on Windows.
-1. Select the GAMEPAD to use in `[Controller]`, then click `[Edit Mapping]` to open the INDIPAD Mapping Editor. Map the DPAD / Buttons / Axes to KStars / INDI operations. When mapping is complete, close the INDIPAD Mapping Editor with `[Close]`.
-1. Enter the IP address of StellarMate OS in `[Host]`, then click `[Connect]` to connect to `remote_indipad_receiver` on StellarMate OS. Once connected, both consoles log the connection.
-1. Operate the equipment with the GAMEPAD.
+```powershell
+# Launch RemoteINDIPAD sender.
+remote_indipad_sender
+```
 
-> ⚠️ Start with conservative movements and verify operation first. In particular, abnormal behavior of a mount or rotator may damage the equipment. Make sure you can stop the equipment at any time.
+#### Linux, such as StellarMate OS
+
+```bash
+# Launch RemoteINDIPAD receiver.
+remote_indipad_receiver
+```
 
 ## Using the Wheel File
 
@@ -180,73 +181,21 @@ source .venv/bin/activate
 remote_indipad_receiver
 ```
 
-## Using the GitHub Repository
+## Usage
 
-- This is the development environment for the RemoteINDIPAD GitHub repository.
+See the instructions for each distribution format for how to launch the programs.
 
-### Requirements
+1. Start KStars on StellarMate OS and start the Ekos Profile. If you are using a mount, unpark it first.
+1. Start `remote_indipad_receiver` on StellarMate OS.
+1. The device names from the started Ekos Profile are displayed in the Mount / Focuser / Filter Wheel / Rotator dropdown lists. If multiple devices of the same type are connected, select one manually from the appropriate dropdown list.
+1. Click `[Start]` on the receiver to listen for a connection. Its status changes to `LISTEN`.
+1. Connect the GAMEPAD to the Windows PC.
+1. Start `remote_indipad_sender.exe` on Windows.
+1. Select the GAMEPAD to use in `[Controller]`, then click `[Edit Mapping]` to open the INDIPAD Mapping Editor. Map the DPAD / Buttons / Axes to KStars / INDI operations. When mapping is complete, close the INDIPAD Mapping Editor with `[Close]`.
+1. Enter the IP address of StellarMate OS in `[Host]`, then click `[Connect]` to connect to `remote_indipad_receiver` on StellarMate OS. Once connected, both consoles log the connection.
+1. Operate the equipment with the GAMEPAD.
 
-- Sender (Windows)
-  - Windows 11
-  - Python 3.10 or later
-  - `pygame` (for obtaining gamepad input)
-  - `pyside6` (GUI)
-- Receiver (Linux)
-  - A Linux environment such as StellarMate OS 2.x or Ubuntu
-  - Python 3.10 or later
-  - `pyside6` (GUI)
-  - QtDBus, provided by PySide6 on supported Linux platforms (KStars / Ekos / INDI integration)
-
-The receiver can also run on Windows for TCP communication testing. KStars / INDI control is unavailable there.
-
-### Installation
-
-#### Sender (Windows)
-
-```powershell
-cd ~
-mkdir Projects
-cd Projects
-git clone https://github.com/jctk/RemoteINDIPAD.git
-cd RemoteINDIPAD
-
-python -m venv .venv
-.venv\Scripts\activate.ps1
-pip install pygame pyside6
-```
-
-#### Receiver (Linux)
-
-```bash
-cd ~
-mkdir Projects
-cd Projects
-git clone https://github.com/jctk/RemoteINDIPAD.git
-cd RemoteINDIPAD
-
-python -m venv .venv
-source .venv/bin/activate
-pip install pyside6
-```
-
-### Starting the Scripts
-
-- Start each script with Python.
-- For usage instructions other than how to start the programs, see [Usage](#usage).
-
-#### Windows
-
-```powershell
-.venv\Scripts\activate.ps1
-python remote_indipad_sender.py
-```
-
-#### StellarMate OS
-
-```bash
-source .venv/bin/activate
-python remote_indipad_receiver.py
-```
+> ⚠️ Start with conservative movements and verify operation first. In particular, abnormal behavior of a mount or rotator may damage the equipment. Make sure you can stop the equipment at any time.
 
 ## User Interface
 
@@ -258,7 +207,7 @@ RemoteINDIPAD sender replaces input from a GAMEPAD connected to Windows with abs
 
 | Item | Description |
 | - | - |
-| Controller | Select the GAMEPAD to use. |
+| Controller | Select the GAMEPAD to use. The Scan button refreshes the list to reflect controllers connected or disconnected after startup. |
 | Host / Port | The IP address of StellarMate OS and the port configured for the RemoteINDIPAD receiver (default: 50007). |
 | Logs - Heartbeat | Display transmitted heartbeats in the console. |
 | Logs - Requests | Display JSON packets sent to the receiver in the console. |
@@ -350,6 +299,89 @@ The available abstract Actions are listed below.
 1. The RemoteINDIPAD receiver lists the Juwei-17 as a focuser.
     - The Juwei-17 is currently identified as such because it has multiple attributes in addition to being a mount.
     - This is because the `driverInterface` for Juwei-17 is set to 141 (10001101), which corresponds to the definitions for WEATHER_INTERFACE, FOCUSER_INTERFACE, GUIDER_INTERFACE, and TELESCOPE_INTERFACE.
+
+## Using the GitHub Repository
+
+- This is the development environment for the RemoteINDIPAD GitHub repository.
+
+### Requirements
+
+- Sender (Windows)
+  - Windows 11
+  - Python 3.10 or later
+  - `pygame` (for obtaining gamepad input)
+  - `pyside6` (GUI)
+- Receiver (Linux)
+  - A Linux environment such as StellarMate OS 2.x or Ubuntu
+  - Python 3.10 or later
+  - `pyside6` (GUI)
+  - QtDBus, provided by PySide6 on supported Linux platforms (KStars / Ekos / INDI integration)
+
+The receiver can also run on Windows for TCP communication testing. KStars / INDI control is unavailable there.
+
+### Installation
+
+#### Sender (Windows)
+
+```powershell
+cd ~
+mkdir Projects
+cd Projects
+git clone https://github.com/jctk/RemoteINDIPAD.git
+cd RemoteINDIPAD
+
+python -m venv .venv
+.venv\Scripts\activate.ps1
+pip install pygame pyside6
+```
+
+#### Receiver (Linux)
+
+```bash
+cd ~
+mkdir Projects
+cd Projects
+git clone https://github.com/jctk/RemoteINDIPAD.git
+cd RemoteINDIPAD
+
+python -m venv .venv
+source .venv/bin/activate
+pip install pyside6
+```
+
+### Starting the Scripts
+
+- Start each script with Python.
+- For usage instructions other than how to start the programs, see [Usage](#usage).
+
+#### Windows
+
+```powershell
+.venv\Scripts\activate.ps1
+python remote_indipad_sender.py
+```
+
+#### StellarMate OS
+
+```bash
+source .venv/bin/activate
+python remote_indipad_receiver.py
+```
+
+### Building the Distribution Files
+
+#### PyInstaller Executables
+
+Run `python build-pyinstaller.py` from the repository root to build the executable for the current OS. The output is placed in the `release` directory.
+
+#### Wheels
+
+Run `python -m build --wheel` once from the repository root to create both the Sender and Receiver wheels in the `dist` directory.
+
+```powershell
+python -m pip install --upgrade build
+python -m build --wheel
+```
 
 ## License
 

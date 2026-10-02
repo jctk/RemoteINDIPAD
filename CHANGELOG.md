@@ -2,6 +2,26 @@
 
 This file documents the change history for RemoteINDIPAD.
 
+## [v0.9.1-beta.1]
+
+### Added
+
+- Added IPv4 and IPv6 receiver listen-address selection, including local-address discovery and unavailable-state handling for addresses that cannot be bound.
+- Added receiver connection-state reporting and Start / Stop controls. Stopping the receiver also stops active mount and rotator movement.
+- Added sender gamepad rescanning and connection-state handling for controllers connected or disconnected while the application is running.
+- Added a single-command wheel build that produces separate Sender and Receiver wheels. The Sender wheel includes `gamepad_profiles.json`; the Receiver wheel contains only receiver modules.
+
+### Changed
+
+- Replaced the `pygame-ce` dependency with `pygame`.
+- Updated PyInstaller builds to include only the Sender and `gamepad_profiles.json` on Windows, and only the Receiver on Linux.
+- Updated the package version to `0.9.1b1`.
+
+### Documentation
+
+- Updated the README files with IPv4/IPv6 listen-address behavior, receiver Start / Stop operation, sender gamepad scanning, platform-specific wheel contents, and build instructions.
+- Updated the development policy and pygame license filename for the dependency change.
+
 ## [v0.9.0-beta.8]
 
 ### Added
