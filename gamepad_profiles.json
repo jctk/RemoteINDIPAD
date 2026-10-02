@@ -1,6 +1,64 @@
 {
   "default_device": "default",
   "profiles": {
+    "Xbox One Game Controller": {
+      "manufacturer": "Microsoft",
+      "model": "",
+      "label": "XBox Wireless Controller",
+      "description": "",
+      "action_mapping": {
+        "dpad_up": "MOUNT_NORTH",
+        "dpad_down": "MOUNT_SOUTH",
+        "dpad_left": "MOUNT_WEST",
+        "dpad_right": "MOUNT_EAST",
+        "button_1": "CAA_ROTATE_COUNTER_CLOCKWISE", // A button
+        "button_2": "CAA_ROTATE_CLOCKWISE",         // B button
+        "button_3": "FOCUS_IN",                     // X button
+        "button_4": "FOCUS_OUT",                    // Y button
+        "button_5": "FILTERWHEEL_PREV",             // L button
+        "button_6": "FILTERWHEEL_NEXT",             // R button
+        "button_7": "",                             // View button
+        "button_8": "",                             // Menu button
+        "button_9": "CAA_ROTATE_ABORT",             // Left Stick button
+        "button_10": "MOUNT_STOP",                  // Right Stick button
+        "button_11": "",
+        "button_12": "",
+        "button_13": "",
+        "button_14": "",
+        "button_15": "",
+        "button_16": "",
+        "axis_1": {                                 // Left Stick Horizontal
+          "NEGATIVE": "MOUNT_STEP_DOWN",
+          "CENTER": "",
+          "POSITIVE": "MOUNT_STEP_UP"
+        },
+        "axis_2": {                                 // Left Stick Vertical
+          "NEGATIVE": "FOCUS_STEP_UP",
+          "CENTER": "",
+          "POSITIVE": "FOCUS_STEP_DOWN"
+        },
+        "axis_3": {                                 // Right Stick Horizontal
+          "NEGATIVE": "SKYMAP_ROTATE_DOWN",
+          "CENTER": "",
+          "POSITIVE": "SKYMAP_ROTATE_UP"
+        },
+        "axis_4": {                                 // Right Stick Vertical
+          "NEGATIVE": "SKYMAP_ZOOM_IN",
+          "CENTER": "",
+          "POSITIVE": "SKYMAP_ZOOM_OUT"
+        },
+        "axis_5": {                                 // Left Trigger
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        },
+        "axis_6": {                                 // Right Trigger
+          "NEGATIVE": "",
+          "CENTER": "",
+          "POSITIVE": ""
+        }
+      }
+    },
     "Controller (Xbox One For Windows)": {
       "manufacturer": "Microsoft",
       "model": "",
