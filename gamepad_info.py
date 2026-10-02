@@ -41,7 +41,6 @@ def detect_joysticks():
     devices = []
     for i in range(count):
         js = pygame.joystick.Joystick(i)
-        js.init()
         device = {
             "index": i,
             "name": js.get_name(),
@@ -74,7 +73,6 @@ class GamepadMonitorWindow(QWidget):
         self.devices = devices
         self.joystick_index = joystick_index
         self.joy = pygame.joystick.Joystick(joystick_index)
-        self.joy.init()
 
         # Initialize the gamepad monitor window UI components
         self.setWindowTitle("Gamepad Monitor")
@@ -189,7 +187,6 @@ class GamepadMonitorWindow(QWidget):
             return
         self.joystick_index = self.devices[index]["index"]
         self.joy = pygame.joystick.Joystick(self.joystick_index)
-        self.joy.init()
         self.setWindowTitle(f"Gamepad Monitor: {self.joy.get_name()}")
         self.update_selected_device_attributes()
         self.clear_value_labels()
