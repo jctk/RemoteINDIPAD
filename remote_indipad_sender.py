@@ -336,8 +336,7 @@ def get_gamepad_input_rows(selected_device: str | None = None):
         try:
             if pygame is not None and getattr(pygame, "get_init", lambda: False)():
                 pygame.joystick.init()
-                for idx in range(int(getattr(pygame.joystick, "get_count", lambda: 0)())):
-                    joy = pygame.joystick.Joystick(idx)
+                for joy in get_pinned_joysticks():
                     if str(get_device_name(joy)).lower() == str(selected_device).lower():
                         axis_count = max(axis_count, int(getattr(joy, "get_numaxes", lambda: 0)()))
                         button_count = max(button_count, int(getattr(joy, "get_numbuttons", lambda: 0)()))
@@ -993,19 +992,32 @@ def resolve_gamepad_selection(gamepad_names, selected_device: str | None = None)
         )
 
 
+_pinned_joysticks: list | None = None
+
+
+def get_pinned_joysticks(pg=None) -> list:
+    """Joysticks present at first enumeration; gamepads connected later are ignored."""
+    global _pinned_joysticks
+    pg = pg or pygame
+    if _pinned_joysticks is None:
+        if not pg.joystick.get_init():
+            pg.joystick.init()
+        _pinned_joysticks = [pg.joystick.Joystick(i) for i in range(pg.joystick.get_count())]
+    return _pinned_joysticks
+
+
 def init_gamepad(selected_device: str | None = None):
     if pygame is None:
         raise RuntimeError("pygame is not installed")
     pygame.init()
     pygame.joystick.init()
-    count = pygame.joystick.get_count()
-    if count == 0:
+    joysticks = get_pinned_joysticks()
+    if not joysticks:
         raise RuntimeError("No gamepad found")
 
-    names = [pygame.joystick.Joystick(index).get_name() for index in range(count)]
+    names = [j.get_name() for j in joysticks]
     selected_index = resolve_gamepad_selection(names, selected_device)
-    joy = pygame.joystick.Joystick(selected_index)
-    return joy
+    return joysticks[selected_index]
 
 
 def _safe_joystick_axis(joy, index: int) -> float:
@@ -1325,6 +1337,8 @@ class SenderWorker(QObject):
                     last_heartbeat = now
 
                 axes, buttons, dpad = read_gamepad_state(self._joy)
+                if not getattr(self._joy, "get_attached", lambda: True)():
+                    raise RuntimeError("gamepad disconnected")
                 axes = normalize_axes(axes, self._deadzone)
                 buttons = {k: bool(v) for k, v in buttons.items()}
                 dpad = {k: bool(v) for k, v in dpad.items()}
@@ -1469,7 +1483,12 @@ class IndipadWindow(QMainWindow):
         self.focus_step_spin.setValue(int(self.gui_settings.get("focus_step", 100)))
         self.focus_step_spin.valueChanged.connect(self._on_focus_step_changed)
 
-        form_layout.addRow("Controller", self.controller_combo)
+        self.scan_button = QPushButton("Scan")
+        self.scan_button.setToolTip("Rescan connected gamepads (disabled while connected)")
+        controller_row = QHBoxLayout()
+        controller_row.addWidget(self.controller_combo, 1)
+        controller_row.addWidget(self.scan_button)
+        form_layout.addRow("Controller", controller_row)
 
         host_port_row = QHBoxLayout()
         host_port_row.addWidget(self.host_edit)
@@ -1527,20 +1546,17 @@ class IndipadWindow(QMainWindow):
         self.monitor_summary_layout.setStretch(3, 0)
 
         self.monitor_detail = QWidget()
-        self.monitor_detail.setFixedWidth(270)
+        self.monitor_detail.setFixedWidth(110)
         self.monitor_detail_layout = QFormLayout(self.monitor_detail)
         self.monitor_detail_layout.setContentsMargins(0, 0, 0, 0)
         self.monitor_detail_layout.setHorizontalSpacing(8)
         self.monitor_detail_layout.setVerticalSpacing(1)
         self.monitor_instance_label = QLabel("0")
-        self.monitor_guid_label = QLabel("-")
-        self.monitor_guid_label.setWordWrap(False)
         self.monitor_axes_count = QLabel("0")
         self.monitor_buttons_count = QLabel("0")
         self.monitor_hats_count = QLabel("0")
         self.monitor_trackballs_count = QLabel("0")
         self.monitor_detail_layout.addRow("Instance Id:", self.monitor_instance_label)
-        self.monitor_detail_layout.addRow("Guid:", self.monitor_guid_label)
         self.monitor_detail_layout.addRow("Axes:", self.monitor_axes_count)
         self.monitor_detail_layout.addRow("Buttons:", self.monitor_buttons_count)
         self.monitor_detail_layout.addRow("Hats:", self.monitor_hats_count)
@@ -1549,7 +1565,7 @@ class IndipadWindow(QMainWindow):
 
         self.monitor_axis_labels = {}
         self.monitor_axis_panel = QWidget()
-        self.monitor_axis_panel.setFixedWidth(170)
+        self.monitor_axis_panel.setFixedWidth(110)
         self.monitor_axis_layout = QVBoxLayout(self.monitor_axis_panel)
         self.monitor_axis_layout.setContentsMargins(0, 0, 0, 0)
         self.monitor_axis_layout.setSpacing(1)
@@ -1568,7 +1584,7 @@ class IndipadWindow(QMainWindow):
         self.monitor_dpad_labels = {}
 
         self.monitor_dpad_panel = QWidget()
-        self.monitor_dpad_panel.setFixedWidth(170)
+        self.monitor_dpad_panel.setFixedWidth(110)
 
         self.monitor_dpad_layout = QFormLayout(self.monitor_dpad_panel)
         self.monitor_dpad_layout.setContentsMargins(0, 0, 0, 0)
@@ -1623,13 +1639,14 @@ class IndipadWindow(QMainWindow):
         self.mapping_button.clicked.connect(self.on_edit_mapping)
         self.close_button.clicked.connect(self.on_close)
         self.controller_combo.currentIndexChanged.connect(self._on_controller_changed)
+        self.scan_button.clicked.connect(self.on_scan_controllers)
 
         self.refresh_controllers()
         self.restore_saved_controller()
         self._monitor_preview_timer = None
         self._start_monitor_preview_timer()
         self.update_monitor_snapshot(build_gamepad_monitor_snapshot(
-            device_name=self.controller_combo.currentText() if self.controller_combo.count() else "",
+            device_name=self._selected_controller_name(),
             guid="",
             axes={},
             buttons={},
@@ -1672,7 +1689,7 @@ class IndipadWindow(QMainWindow):
             self.worker._focus_step = self.gui_settings["focus_step"]
 
     def save_settings(self):
-        controller_name = self.controller_combo.currentText() if self.controller_combo.count() else ""
+        controller_name = self._selected_controller_name()
         controller_guid = ""
         if controller_name and controller_name not in {"No controller found", "Controller unavailable"}:
             try:
@@ -1681,8 +1698,7 @@ class IndipadWindow(QMainWindow):
                     gui_pygame.init()
                 if not gui_pygame.joystick.get_init():
                     gui_pygame.joystick.init()
-                for index in range(gui_pygame.joystick.get_count()):
-                    joy = gui_pygame.joystick.Joystick(index)
+                for joy in get_pinned_joysticks(gui_pygame):
                     if get_device_name(joy) == controller_name:
                         controller_guid = get_device_guid(joy)
                         break
@@ -1712,12 +1728,37 @@ class IndipadWindow(QMainWindow):
         self.gui_settings = settings
         save_gui_settings(settings)
 
+    def on_scan_controllers(self):
+        global _pinned_joysticks
+        if self.worker is not None:
+            self.log("scan ignored: disconnect before scanning controllers")
+            return
+        previous = self._selected_controller_name()
+        try:
+            import pygame as gui_pygame
+            gui_pygame.init()
+            # quit/init forces SDL to re-enumerate attached devices
+            gui_pygame.joystick.quit()
+            gui_pygame.joystick.init()
+            _pinned_joysticks = None
+        except Exception as exc:
+            self.log(f"controller scan failed: {exc}")
+            return
+        self.controller_combo.blockSignals(True)
+        self.refresh_controllers()
+        index = self.controller_combo.findData(previous)
+        if index >= 0:
+            self.controller_combo.setCurrentIndex(index)
+        self.controller_combo.blockSignals(False)
+        self.log(f"controller scan: {self.controller_combo.count()} item(s)")
+        self._start_monitor_preview_timer()
+
     def restore_saved_controller(self):
         saved_controller = self.gui_settings.get("controller", "")
         if not saved_controller:
             return
         for index in range(self.controller_combo.count()):
-            if self.controller_combo.itemText(index) == saved_controller:
+            if self.controller_combo.itemData(index) == saved_controller:
                 self.controller_combo.setCurrentIndex(index)
                 return
 
@@ -1726,7 +1767,7 @@ class IndipadWindow(QMainWindow):
             self._start_monitor_preview_timer()
             return
 
-        device_name = self.controller_combo.currentText()
+        device_name = self._selected_controller_name()
         if device_name in {"No controller found", "Controller unavailable"}:
             self.log("controller change ignored: no controller is available")
             return
@@ -1760,9 +1801,10 @@ class IndipadWindow(QMainWindow):
             if not gui_pygame.joystick.get_init():
                 gui_pygame.joystick.init()
             selected_index = self.controller_combo.currentIndex()
-            if selected_index < 0 or selected_index >= gui_pygame.joystick.get_count():
+            pinned = get_pinned_joysticks(gui_pygame)
+            if selected_index < 0 or selected_index >= len(pinned):
                 return
-            selected_joy = gui_pygame.joystick.Joystick(selected_index)
+            selected_joy = pinned[selected_index]
             axes, buttons, dpad = read_gamepad_state(selected_joy)
             axes = normalize_axes(axes, self.gui_settings.get("deadzone", DEADZONE))
             buttons = {k: bool(v) for k, v in buttons.items()}
@@ -1785,24 +1827,8 @@ class IndipadWindow(QMainWindow):
         if not isinstance(snapshot, dict):
             return
 
-        device_name = str(snapshot.get("device_name") or self.controller_combo.currentText() or "Unknown gamepad")
-        guid = str(snapshot.get("device_guid") or "")
-        if not guid and self.controller_combo.count():
-            try:
-                import pygame as gui_pygame
-                if not gui_pygame.get_init():
-                    gui_pygame.init()
-                if not gui_pygame.joystick.get_init():
-                    gui_pygame.joystick.init()
-                for index in range(gui_pygame.joystick.get_count()):
-                    joy = gui_pygame.joystick.Joystick(index)
-                    if get_device_name(joy) == device_name:
-                        guid = get_device_guid(joy)
-                        break
-            except Exception:
-                guid = ""
+        device_name = str(snapshot.get("device_name") or self._selected_controller_name() or "Unknown gamepad")
         self.monitor_instance_label.setText(str(snapshot.get("instance_id") or "0"))
-        self.monitor_guid_label.setText(guid or "-")
         self.monitor_axes_count.setText(str(snapshot.get("axis_count") or 0))
         self.monitor_buttons_count.setText(str(snapshot.get("button_count") or 0))
         self.monitor_hats_count.setText(str(snapshot.get("hat_count") or 0))
@@ -1847,6 +1873,11 @@ class IndipadWindow(QMainWindow):
     def set_connection_button_state(self, connected: bool):
         self.connection_button.setText("Disconnect" if connected else "Connect")
         self.connection_button.setStyleSheet("QPushButton { font-weight: bold; }" if connected else "")
+        self.scan_button.setEnabled(not connected)
+        self.controller_combo.setEnabled(not connected)
+        editor = getattr(self, "mapping_editor", None)
+        if editor is not None:
+            editor.set_read_only(connected)
 
     def _handle_connection_update(self, text: str, worker=None):
         normalized = str(text or "").strip()
@@ -1888,11 +1919,12 @@ class IndipadWindow(QMainWindow):
         editor = MappingEditorWindow(
             self,
             mapping=self.gui_settings.get("action_mapping", {"controllers": []}),
-            selected_device=self.controller_combo.currentText(),
+            selected_device=self._selected_controller_name(),
         )
         editor.mapping_applied.connect(self._apply_mapping)
         editor.closed.connect(self._on_mapping_editor_closed)
         self.mapping_editor = editor
+        editor.set_read_only(self.worker is not None)
         self.mapping_button.setEnabled(False)
         editor.show()
         editor.raise_()
@@ -1903,7 +1935,7 @@ class IndipadWindow(QMainWindow):
 
     def _apply_mapping(self, mapping: dict):
         combo = getattr(self, "controller_combo", None)
-        selected_device = combo.currentText() if combo is not None else self.gui_settings.get("controller", "")
+        selected_device = self._selected_controller_name() if combo is not None else self.gui_settings.get("controller", "")
         selected_guid = str(self.gui_settings.get("controller_guid", "") or "")
         if selected_device and selected_device not in {"No controller found", "Controller unavailable"}:
             try:
@@ -1912,8 +1944,7 @@ class IndipadWindow(QMainWindow):
                     gui_pygame.init()
                 if not gui_pygame.joystick.get_init():
                     gui_pygame.joystick.init()
-                for index in range(gui_pygame.joystick.get_count()):
-                    joy = gui_pygame.joystick.Joystick(index)
+                for joy in get_pinned_joysticks(gui_pygame):
                     if get_device_name(joy) == selected_device:
                         selected_guid = get_device_guid(joy)
                         break
@@ -1954,20 +1985,27 @@ class IndipadWindow(QMainWindow):
         )
         self.save_settings()
 
+    def _selected_controller_name(self) -> str:
+        data = self.controller_combo.currentData()
+        return str(data) if data else self.controller_combo.currentText()
+
     def refresh_controllers(self):
         try:
             import pygame as gui_pygame
             gui_pygame.init()
             gui_pygame.joystick.init()
-            names = [gui_pygame.joystick.Joystick(idx).get_name() for idx in range(gui_pygame.joystick.get_count())]
+            joysticks = get_pinned_joysticks(gui_pygame)
             self.controller_combo.clear()
-            if names:
-                self.controller_combo.addItems(names)
+            if joysticks:
+                for joy in joysticks:
+                    name = joy.get_name()
+                    guid = get_device_guid(joy)
+                    self.controller_combo.addItem(f"{name} [{guid}]" if guid else name, name)
             else:
-                self.controller_combo.addItem("No controller found")
+                self.controller_combo.addItem("No controller found", "No controller found")
         except Exception as exc:  # pragma: no cover - runtime behavior
             self.controller_combo.clear()
-            self.controller_combo.addItem("Controller unavailable")
+            self.controller_combo.addItem("Controller unavailable", "Controller unavailable")
             self.log(f"controller scan failed: {exc}")
 
     def on_connect(self):
@@ -1977,7 +2015,7 @@ class IndipadWindow(QMainWindow):
         if hasattr(self, "_monitor_preview_timer"):
             self._monitor_preview_timer.stop()
 
-        device_name = self.controller_combo.currentText()
+        device_name = self._selected_controller_name()
         if device_name in {"No controller found", "Controller unavailable"}:
             device_name = None
 
@@ -1997,8 +2035,7 @@ class IndipadWindow(QMainWindow):
                     gui_pygame.init()
                 if not gui_pygame.joystick.get_init():
                     gui_pygame.joystick.init()
-                for index in range(gui_pygame.joystick.get_count()):
-                    joy = gui_pygame.joystick.Joystick(index)
+                for joy in get_pinned_joysticks(gui_pygame):
                     if get_device_name(joy) == device_name:
                         controller_guid = get_device_guid(joy)
                         break
@@ -2185,6 +2222,18 @@ class MappingEditorWindow(QMainWindow):
             self._input_status_timer.timeout.connect(self._refresh_input_status)
             self._input_status_timer.start()
 
+    def set_read_only(self, read_only: bool):
+        self.save_button.setEnabled(not read_only)
+        self.reset_button.setEnabled(not read_only)
+        for row in self.input_rows.values():
+            for box in (row.values() if isinstance(row, dict) else [row]):
+                box.setEnabled(not read_only)
+        self.reconnect_note.setText(
+            "Mapping cannot be edited while connected. Disconnect to edit."
+            if read_only
+            else "The changes will take effect after reconnect to the host."
+        )
+
     def _set_input_pressed(self, combo, pressed: bool):
         if combo not in self._input_default_palettes:
             self._input_default_palettes[combo] = combo.palette()
@@ -2207,8 +2256,7 @@ class MappingEditorWindow(QMainWindow):
                 gui_pygame.joystick.init()
 
             selected_name = str(self.selected_device or "").strip().lower()
-            for index in range(gui_pygame.joystick.get_count()):
-                joy = gui_pygame.joystick.Joystick(index)
+            for joy in get_pinned_joysticks(gui_pygame):
                 if not selected_name or get_gamepad_name(joy).lower() == selected_name:
                     return joy
         except Exception:
