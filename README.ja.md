@@ -297,7 +297,7 @@ RemoteINDIPAD receiverはRemoteINDIPAD senderからNetwork経由で受信した"
 | Logs - D-BUS | D-BUS の呼び出し内容と返却結果を Console に表示する。 |
 | Logs - Word Wrap | コンソールのログをウィンドウ幅に合わせて折り返す。 |
 | Scan INDI | 利用可能なINDIドライバーをスキャンし各ドライバーのリストに設定する。 |
-| Restart | 接続待ちを再スタートする。選択したアドレスまたはポートを変更した場合に使用する。再スタート直前にもアドレスを再検査する。 |
+| Start / Stop | トグルボタン。起動直後は待ち受けせず「Start」を表示する。Start で LISTEN になると「Stop」に変わる。LISTEN / ESTABLISHED 中は各 INDI ドライバーのコンボと [Scan INDI] は操作できない。Stop で LISTEN / ESTABLISHED を終了し、LISTEN 表示は「---」になり、実行中の MOUNT_NORTH/SOUTH/WEST/EAST と CAA_ROTATE_COUNTER_CLOCKWISE/CAA_ROTATE_CLOCKWISE も停止する。 |
 | Close | RemoteINDIPAD receiver を閉じる |
 | INDIPAD console | 操作や通信の状態を表示する。 |
 | Clear | コンソールをクリアする。 |

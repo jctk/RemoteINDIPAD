@@ -1629,6 +1629,7 @@ class ReceiverWindow(QMainWindow):
             log_callback=self.log_queue.emit,
         )
         self.receiver_thread = None
+        self._receiver_running = False
         self._original_stdout = sys.stdout
         self._original_stderr = sys.stderr
         self._gui_stdout = GuiConsoleStream(self)
@@ -1715,10 +1716,10 @@ class ReceiverWindow(QMainWindow):
 
         button_row = QHBoxLayout()
         self.scan_button = QPushButton("Scan INDI")
-        self.restart_button = QPushButton("Restart")
+        self.toggle_button = QPushButton("Start")
         self.close_button = QPushButton("Close")
 
-        for button in (self.scan_button, self.restart_button, self.close_button):
+        for button in (self.scan_button, self.toggle_button, self.close_button):
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             button_row.addWidget(button)
 
@@ -1754,9 +1755,8 @@ class ReceiverWindow(QMainWindow):
         self.actions_checkbox.toggled.connect(self.on_actions_toggled)
         self.dbus_checkbox.toggled.connect(self.on_dbus_toggled)
         self.listen_refresh_button.clicked.connect(self.on_rescan_network_addresses)
-        self.start_receiver()
         self.scan_button.clicked.connect(self.on_scan_indi)
-        self.restart_button.clicked.connect(self.on_restart)
+        self.toggle_button.clicked.connect(self.on_toggle_receiver)
         self.close_button.clicked.connect(self.on_close)
         QTimer.singleShot(0, self.on_scan_indi)
         self.log("Ready")
@@ -1771,10 +1771,13 @@ class ReceiverWindow(QMainWindow):
         for message in self.log_queue.drain():
             if isinstance(message, tuple) and len(message) == 2 and message[0] == "bind_failure":
                 self._mark_listen_target_unavailable(message[1])
+                self._set_receiver_running(False)
                 continue
             if isinstance(message, tuple) and len(message) == 3 and message[0] == "receiver_status":
-                if message[1] is self.receiver:
+                if message[1] is self.receiver and self._receiver_running:
                     self.service_status_label.setText(message[2])
+                    self.toggle_button.setEnabled(True)
+                    self.toggle_button.setText("Stop")
                 continue
             self._append_log(message)
 
@@ -2036,8 +2039,23 @@ class ReceiverWindow(QMainWindow):
         self.gui_settings["word_wrap"] = bool(enabled)
         self.save_settings()
 
+    def _set_receiver_running(self, running: bool):
+        self._receiver_running = running
+        self.toggle_button.setText("Stop" if running else "Start")
+        self.toggle_button.setEnabled(not running)
+        for widget in (self.mount_combo, self.focuser_combo, self.filter_combo, self.rotator_combo, self.scan_button):
+            widget.setEnabled(not running)
+        if not running:
+            self.toggle_button.setEnabled(True)
+            self.service_status_label.setText("---")
+
+    def on_toggle_receiver(self):
+        if self._receiver_running:
+            self.stop_receiver()
+        else:
+            self.start_receiver()
+
     def start_receiver(self):
-        # No save_settings() here: combos still hold placeholder items until the INDI scan completes.
         target = self._revalidate_listen_target(self._selected_listen_target())
         if target is None:
             return
@@ -2048,6 +2066,7 @@ class ReceiverWindow(QMainWindow):
         except ValueError:
             self.log("invalid port value; using default 50007")
             port = 50007
+        self.save_settings()
         self.receiver = Receiver(
             host=host,
             port=port,
@@ -2062,41 +2081,16 @@ class ReceiverWindow(QMainWindow):
             bind_failure_callback=self.log_queue.emit_bind_failure,
             status_callback=self.log_queue.emit_status,
         )
+        self._set_receiver_running(True)
         self.receiver_thread = self.receiver.start()
         self.log(f"listener startup requested on {self._format_listen_address(target)}:{port}")
 
-    def restart_receiver(self):
-        target = self._revalidate_listen_target(self._selected_listen_target())
-        if target is None:
-            return
-        self.service_status_label.setText("---")
-        self.service_status_label.repaint()
-        host = str(target.get("address", HOST))
-        port_text = self.port_edit.text().strip() or "50007"
-        try:
-            port = int(port_text)
-        except ValueError:
-            self.log("invalid port value; using default 50007")
-            port = 50007
+    def stop_receiver(self):
+        self._receiver_running = False
         self.receiver.stop()
-        self.save_settings()
-        self.log("restarting listener...")
-        self.receiver = Receiver(
-            host=host,
-            port=port,
-            log_heartbeat=self.heartbeat_checkbox.isChecked(),
-            log_requests=self.requests_checkbox.isChecked(),
-            log_actions=self.actions_checkbox.isChecked(),
-            log_dbus=self.dbus_checkbox.isChecked(),
-            scope_id=int(target.get("scope_id", 0) or 0),
-            interface_name=str(target.get("interface", "")),
-            family=str(target.get("family", "ipv4")),
-            log_callback=self.log_queue.emit,
-            bind_failure_callback=self.log_queue.emit_bind_failure,
-            status_callback=self.log_queue.emit_status,
-        )
-        self.receiver_thread = self.receiver.start()
-        self.log(f"listener restart requested on {self._format_listen_address(target)}:{port}")
+        trigger_heartbeat_emergency_stop()
+        self._set_receiver_running(False)
+        self.log("listener stopped")
 
     @staticmethod
     def _format_listen_address(target: dict) -> str:
@@ -2168,9 +2162,6 @@ class ReceiverWindow(QMainWindow):
             self.focuser_combo.setCurrentIndex(0)
             self.filter_combo.setCurrentIndex(0)
             self.rotator_combo.setCurrentIndex(0)
-
-    def on_restart(self):
-        self.restart_receiver()
 
     def on_close(self):
         self.save_settings()

@@ -294,7 +294,7 @@ RemoteINDIPAD receiver converts the "Actions" received from RemoteINDIPAD sender
 | Logs - D-BUS | Display D-BUS calls and returned results in the console. |
 | Logs - Word Wrap | Wrap console log lines to the window width. |
 | Scan INDI | Scan for available INDI drivers and populate each driver list. |
-| Restart | Restart the listener. Use this after changing the selected address or port. The selected address is checked again before restarting. |
+| Start / Stop | Toggle button. The receiver does not listen at launch and shows "Start". After Start reaches LISTEN it becomes "Stop". While LISTEN / ESTABLISHED, the INDI driver combos and [Scan INDI] are disabled. Stop ends LISTEN/ESTABLISHED, shows "---" for the status, and stops any running MOUNT_NORTH/SOUTH/WEST/EAST and CAA_ROTATE_COUNTER_CLOCKWISE/CAA_ROTATE_CLOCKWISE motion. |
 | Close | Close RemoteINDIPAD receiver. |
 | INDIPAD console | Display operation and communication status. |
 | Clear | Clear the console. |
