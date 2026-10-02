@@ -1,8 +1,8 @@
-"""Build remote_indipad_receiver.py and remote_indipad_sender.py with PyInstaller.
+"""Build the platform-specific RemoteINDIPAD application with PyInstaller.
 
 The output directory varies by whether the build environment is Windows x64,
-Linux x64, or Linux aarch64. Both scripts are built as one-file applications
-with the console hidden. If one build fails, the other build continues.
+Linux x64, or Linux aarch64. Windows builds the sender and Linux builds the
+receiver as one-file applications with the console hidden.
 """
 
 import hashlib
@@ -18,9 +18,6 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent
 BUILD_DIR = ROOT_DIR / "build"
 
-# Scripts to build.
-SCRIPTS = ["remote_indipad_receiver.py", "remote_indipad_sender.py"]
-
 # Additional data files placed alongside the executables, by script.
 EXTRA_DATA_FILES = {
     "remote_indipad_sender.py": ["gamepad_profiles.json"],
@@ -31,6 +28,7 @@ ICON_DATA_FILE = "resources/icon.png"
 PLATFORM_SETTINGS = {
     "windows-x64": {
         "release_dir": "windows-x64",
+        "scripts": ["remote_indipad_sender.py"],
         "icon": str(ROOT_DIR / "resources" / "icon.ico"),
         "exe_suffix": ".exe",
         "archive_name": "RemoteINDIPAD-windows-x64",
@@ -38,6 +36,7 @@ PLATFORM_SETTINGS = {
     },
     "linux-aarch64": {
         "release_dir": "linux-aarch64",
+        "scripts": ["remote_indipad_receiver.py"],
         "icon": str(ROOT_DIR / "resources" / "icon.icns"),
         "exe_suffix": "",
         "archive_name": "RemoteINDIPAD-linux-aarch64",
@@ -45,6 +44,7 @@ PLATFORM_SETTINGS = {
     },
     "linux-x64": {
         "release_dir": "linux-x64",
+        "scripts": ["remote_indipad_receiver.py"],
         "icon": str(ROOT_DIR / "resources" / "icon.icns"),
         "exe_suffix": "",
         "archive_name": "RemoteINDIPAD-linux-x64",
@@ -57,19 +57,18 @@ def create_argument_parser() -> argparse.ArgumentParser:
     """Create the command-line argument parser."""
     parser = argparse.ArgumentParser(
         description=(
-            "Build the RemoteINDIPAD receiver and sender as standalone "
-            "PyInstaller applications."
+            "Build the platform-specific RemoteINDIPAD application as a "
+            "standalone PyInstaller executable."
         ),
         epilog=(
-            "The build platform is detected automatically. The executables and "
-            "gamepad_profiles.json are saved under release/<platform>/, where "
-            "<platform> is windows-x64, linux-x64, or linux-aarch64. The "
-            "distribution archive and its SHA256 checksum are saved in the "
-            "same directory. Windows builds produce a ZIP archive; Linux "
-            "builds produce a tar.gz archive. PyInstaller must be installed in "
-            "the Python environment used to run this script. If one script "
-            "fails to build, the other script continues, but no archive is "
-            "created and the command exits with status 1."
+            "The build platform is detected automatically. Windows builds "
+            "include the sender executable and gamepad_profiles.json; Linux "
+            "builds include the receiver executable. Outputs are saved under "
+            "release/<platform>/, where <platform> is windows-x64, linux-x64, "
+            "or linux-aarch64. The distribution archive and its SHA256 "
+            "checksum are saved in the same directory. Windows builds produce "
+            "a ZIP archive; Linux builds produce a tar.gz archive. PyInstaller "
+            "must be installed in the Python environment used to run this script."
         ),
     )
     return parser
@@ -157,23 +156,30 @@ def create_release_archive(
     exe_suffix: str,
     archive_name: str,
     archive_format: str,
+    scripts: list[str],
 ) -> bool:
     """Archive the executables and additional data files, then save the SHA256 hash."""
     output_dir = ROOT_DIR / "release" / release_dir
 
     files_to_archive = []
-    for script_name in SCRIPTS:
+    for script_name in scripts:
         exe_path = output_dir / f"{Path(script_name).stem}{exe_suffix}"
         if not exe_path.exists():
             print(f"Error: executable not found: {exe_path}", file=sys.stderr)
             return False
         files_to_archive.append(exe_path)
 
-    extra_filenames = {filename for filenames in EXTRA_DATA_FILES.values() for filename in filenames}
+    extra_filenames = {
+        filename
+        for script_name in scripts
+        for filename in EXTRA_DATA_FILES.get(script_name, [])
+    }
     for filename in sorted(extra_filenames):
         data_path = output_dir / filename
-        if data_path.exists():
-            files_to_archive.append(data_path)
+        if not data_path.exists():
+            print(f"Error: required data file not found: {data_path}", file=sys.stderr)
+            return False
+        files_to_archive.append(data_path)
 
     archive_path = output_dir / f"{archive_name}.{archive_format}"
     hash_path = output_dir / f"{archive_path.name}.sha256"
@@ -208,14 +214,14 @@ def main() -> int:
     platform_key = detect_platform_key()
     settings = PLATFORM_SETTINGS[platform_key]
     release_dir = settings["release_dir"]
+    scripts = settings["scripts"]
     icon = settings["icon"]
 
     print(f"Detected build environment: {platform_key}")
 
     failed_scripts = []
 
-    # Continue building the remaining scripts if one script fails.
-    for script_name in SCRIPTS:
+    for script_name in scripts:
         clear_previous_cache(script_name)
 
         success = run_pyinstaller(script_name, release_dir, icon)
@@ -235,6 +241,7 @@ def main() -> int:
         settings["exe_suffix"],
         settings["archive_name"],
         settings["archive_format"],
+        scripts,
     )
     if not archive_ok:
         print("Error: failed to create the distribution archive.", file=sys.stderr)

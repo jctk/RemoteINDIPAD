@@ -9,7 +9,7 @@ description = "Gamepad-based remote control for KStars, Ekos, and INDI"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "pygame-ce",
+    "pygame",
     "PySide6",
 ]
 

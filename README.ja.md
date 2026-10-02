@@ -180,7 +180,7 @@ remote_indipad_receiver
 - 送信側（Windows）
   - Windows 11
   - Python 3.10 以降
-  - `pygame-ce`（ゲームパッド入力取得）
+  - `pygame`（ゲームパッド入力取得）
   - `pyside6`（GUI）
 - 受信側（Linux）
   - StellarMate OS 2.x または Ubuntu などの Linux 環境
@@ -203,7 +203,7 @@ cd RemoteINDIPAD
 
 python -m venv .venv
 .venv\Scripts\activate.ps1
-pip install pygame-ce pyside6
+pip install pygame pyside6
 ```
 
 #### 受信側（Linux）
@@ -350,11 +350,11 @@ RemoteINDIPAD receiverはRemoteINDIPAD senderからNetwork経由で受信した"
 
 現在確認している主な依存ライブラリは次のとおりです。
 
-- `pygame-ce`: GNU LGPL 2.1
+- `pygame`: GNU LGPL 2.1
 - `PySide6` / Qt for Python: LGPL 3.0、GPL、または商用ライセンス
 - `PyInstaller`: GPL 2.0以降（PyInstallerで作成したアプリケーションの配布を認める特別例外付き）
 - Python標準ライブラリ: Python Software Foundation License
 
-確認したライセンス本文は [license](license/) フォルダーに保存しています。PySide6、Qt、pygame-ceが内部で利用するコンポーネントなど、ここに掲載していない依存物についても、実際に使用するバージョンおよび配布形態に応じたライセンス条件を確認してください。
+確認したライセンス本文は [license](license/) フォルダーに保存しています。PySide6、Qt、pygameが内部で利用するコンポーネントなど、ここに掲載していない依存物についても、実際に使用するバージョンおよび配布形態に応じたライセンス条件を確認してください。
 
 特にPySide6を使用した実行ファイルを配布する場合は、LGPLの条件に従い、Qt / PySide6のライセンス表示を保持し、利用者による対象ライブラリの置き換えを不当に妨げないようにしてください。PyInstallerで作成した実行ファイルについても、PyInstaller自身の例外だけでなく、同梱されるすべての依存ライブラリの条件が適用されます。

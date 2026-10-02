@@ -177,7 +177,7 @@ remote_indipad_receiver
 - Sender (Windows)
   - Windows 11
   - Python 3.10 or later
-  - `pygame-ce` (for obtaining gamepad input)
+  - `pygame` (for obtaining gamepad input)
   - `pyside6` (GUI)
 - Receiver (Linux)
   - A Linux environment such as StellarMate OS 2.x or Ubuntu
@@ -200,7 +200,7 @@ cd RemoteINDIPAD
 
 python -m venv .venv
 .venv\Scripts\activate.ps1
-pip install pygame-ce pyside6
+pip install pygame pyside6
 ```
 
 #### Receiver (Linux)
@@ -347,11 +347,11 @@ Third-party libraries and related components included in the distributions are s
 
 The main dependency libraries currently identified are as follows:
 
-- `pygame-ce`: GNU LGPL 2.1
+- `pygame`: GNU LGPL 2.1
 - `PySide6` / Qt for Python: LGPL 3.0, GPL, or a commercial license
 - `PyInstaller`: GPL 2.0 or later, with a special exception permitting distribution of applications created with PyInstaller
 - Python standard library: Python Software Foundation License
 
-The license texts that have been checked are stored in the [license](license/) folder. For dependencies not listed here, including components used internally by PySide6, Qt, and pygame-ce, check the license terms applicable to the versions and distribution formats you actually use.
+The license texts that have been checked are stored in the [license](license/) folder. For dependencies not listed here, including components used internally by PySide6, Qt, and pygame, check the license terms applicable to the versions and distribution formats you actually use.
 
 In particular, when distributing an executable that uses PySide6, comply with the LGPL terms, retain the Qt / PySide6 license notices, and do not unjustifiably prevent users from replacing the relevant libraries. Executables created with PyInstaller are also subject to the terms of every bundled dependency, in addition to PyInstaller's own exception.
