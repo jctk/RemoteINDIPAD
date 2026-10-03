@@ -1604,10 +1604,12 @@ def _clamp_window_position(x: int, y: int, width: int, height: int) -> tuple:
 
 
 class ReceiverWindow(QMainWindow):
+    """Main window class for the INDIpad receiver GUI.
+    """
     def __init__(self):
         super().__init__()
-        self.setWindowIcon(QIcon(str(APP_ICON_PATH)))
-        self.setWindowTitle("INDIPAD HOST")
+        self.setWindowIcon(QIcon(str(APP_ICON_PATH)))   # Set the window icon for the application
+        self.setWindowTitle("INDIPAD HOST")             # Set the window title for the application
         self.resize(720, 420)
         self.gui_settings = load_gui_settings()
         geometry = self.gui_settings.get("window_geometry", {})
@@ -1663,6 +1665,7 @@ class ReceiverWindow(QMainWindow):
         self.rotator_combo.addItems(["Not scanned", "Rotator 1", "Rotator 2"])
         self.listen_combo = QComboBox()
         self.listen_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.listen_combo.setMinimumWidth(200)
         self.listen_refresh_button = QPushButton()
         self.listen_refresh_button.setIcon(
             self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
@@ -1714,15 +1717,18 @@ class ReceiverWindow(QMainWindow):
         logs_row.addStretch()
         form_layout.addRow("Logs", logs_row)
 
+        # Create the row of buttons for scanning, toggling, and closing the application
         button_row = QHBoxLayout()
         self.scan_button = QPushButton("Scan INDI")
         self.toggle_button = QPushButton("Start")
         self.close_button = QPushButton("Close")
 
+        # Set the size policy for the buttons to expand horizontally
         for button in (self.scan_button, self.toggle_button, self.close_button):
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             button_row.addWidget(button)
 
+        # Add the console widget and its associated button row to the main layout
         self.console = QTextEdit()
         self.console.setReadOnly(True)
         self.console.setFont(QFont("Consolas", 10))
@@ -1744,6 +1750,7 @@ class ReceiverWindow(QMainWindow):
         main_layout.addWidget(self.console)
         main_layout.addLayout(console_button_row)
 
+        # Refresh the listening addresses and restore saved GUI settings
         self._refresh_listening_addresses(self.gui_settings.get("listen_target"))
         self.restore_saved_values()
         self.mount_combo.currentIndexChanged.connect(self._sync_active_indi_devices)
