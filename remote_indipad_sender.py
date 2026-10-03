@@ -54,10 +54,10 @@ except ImportError:  # pragma: no cover - GUI is optional unless GUI mode is use
     QApplication = None
 
 import remote_indipad_protocol as protocol
-from remote_indipad_paths import get_installed_package_version, get_user_config_dir
+from remote_indipad_paths import get_installed_package_version, get_user_config_dir, get_version
 
 # Configuration and Constants
-VERSION = "0.9.1b1"
+VERSION = get_version()
 DEFAULT_JOYSTICK_WAIT_MAX = 2.0
 HOST = "127.0.0.1"
 PORT = 50007

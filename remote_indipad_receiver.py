@@ -24,7 +24,7 @@ import sysconfig
 import xml.etree.ElementTree as ET
 
 import remote_indipad_protocol as protocol
-from remote_indipad_paths import get_installed_package_version, get_user_config_dir
+from remote_indipad_paths import get_installed_package_version, get_user_config_dir, get_version
 
 try:
     import ctypes
@@ -61,7 +61,7 @@ try:
 except ImportError:  # pragma: no cover - QtNetwork is unavailable without PySide6
     QNetworkInterface = None
 
-VERSION = "0.9.1b1"
+VERSION = get_version()
 HOST = "0.0.0.0"
 PORT = 50007
 DEFAULT_LISTEN_TARGET = {

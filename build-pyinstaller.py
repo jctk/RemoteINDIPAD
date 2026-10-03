@@ -122,6 +122,8 @@ def run_pyinstaller(script_name: str, release_dir: str, icon: str | None) -> boo
         "--noconfirm",
         "--add-data",
         f"{ROOT_DIR / ICON_DATA_FILE}{';' if platform.system() == 'Windows' else ':'}resources",
+        "--add-data",
+        f"{ROOT_DIR / 'VERSION'}{';' if platform.system() == 'Windows' else ':'}.",
     ]
 
     if icon:

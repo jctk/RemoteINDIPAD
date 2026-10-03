@@ -19,7 +19,7 @@ TARGETS = {
         "dependencies": ["PySide6", "pygame; sys_platform == 'win32'"],
         "script": "remote_indipad_sender=remote_indipad_sender:run_gui",
         "data_files": [
-            ("share/RemoteINDIPAD", ["gamepad_profiles.json"]),
+            ("share/RemoteINDIPAD", ["VERSION", "gamepad_profiles.json"]),
             ("share/RemoteINDIPAD/resources", ["resources/icon.png"]),
         ],
     },
@@ -33,6 +33,7 @@ TARGETS = {
         "dependencies": ["PySide6"],
         "script": "remote_indipad_receiver=remote_indipad_receiver:run_gui",
         "data_files": [
+            ("share/RemoteINDIPAD", ["VERSION"]),
             ("share/RemoteINDIPAD/resources", ["resources/icon.png"]),
         ],
     },

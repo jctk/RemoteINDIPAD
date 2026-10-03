@@ -9,12 +9,32 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+import remote_indipad_paths as paths
 import remote_indipad_protocol as protocol
 import remote_indipad_receiver as receiver
 import remote_indipad_sender as sender
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_sender_and_receiver_versions_match_version_file(self):
+        version_file = Path(__file__).resolve().parent.parent / "VERSION"
+        version = version_file.read_text(encoding="utf-8").strip()
+        self.assertEqual(sender.VERSION, version)
+        self.assertEqual(receiver.VERSION, version)
+
+    def test_version_is_loaded_from_installed_package_data(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            package_dir = root / "site-packages"
+            data_dir = root / "prefix"
+            version_file = data_dir / "share" / "RemoteINDIPAD" / "VERSION"
+            version_file.parent.mkdir(parents=True)
+            version_file.write_text("1.2.3\n", encoding="utf-8")
+
+            with patch.object(paths, "__file__", str(package_dir / "remote_indipad_paths.py")), \
+                    patch.object(paths.sysconfig, "get_path", return_value=str(data_dir)):
+                self.assertEqual(paths.get_version(), "1.2.3")
+
     def test_receiver_reports_connection_state(self):
         probe = socket.socket()
         probe.bind(("127.0.0.1", 0))
