@@ -92,6 +92,11 @@ remote_indipad_sender
 remote_indipad_receiver
 ```
 
+### 設定ファイルの保存先
+
+- **Windows:** 実行ファイルを展開したフォルダーに保存されます。`remote_indipad_sender.json` と `gamepad_profiles.json` が対象です。
+- **Linux:** `remote_indipad_receiver` を置いたフォルダーに `remote_indipad_receiver.json` が保存されます。
+
 ## ホイールファイル を使用する
 
 - `pip install ホイールファイル` でインストールします。
@@ -176,6 +181,11 @@ source .venv/bin/activate
 # RemoteINDIPAD receiver を起動する
 remote_indipad_receiver
 ```
+
+### 設定ファイルの保存先
+
+- **Windows:** `%APPDATA%\RemoteINDIPAD\` に保存されます（通常は `%USERPROFILE%\AppData\Roaming\RemoteINDIPAD\`）。`remote_indipad_sender.json` と `gamepad_profiles.json` が対象です。
+- **Linux:** `$XDG_CONFIG_HOME/RemoteINDIPAD/` に `remote_indipad_receiver.json` が保存されます。`XDG_CONFIG_HOME` が未設定の場合は `~/.config/RemoteINDIPAD/` です。
 
 ## 使い方
 

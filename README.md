@@ -90,6 +90,11 @@ remote_indipad_sender
 remote_indipad_receiver
 ```
 
+### Configuration File Locations
+
+- **Windows:** Configuration files are stored in the folder where the executable was extracted. These are `remote_indipad_sender.json` and `gamepad_profiles.json`.
+- **Linux:** `remote_indipad_receiver.json` is stored in the folder containing `remote_indipad_receiver`.
+
 ## Using the Wheel File
 
 - Install the wheel file with `pip install`.
@@ -180,6 +185,11 @@ source .venv/bin/activate
 # Launch RemoteINDIPAD receiver.
 remote_indipad_receiver
 ```
+
+### Configuration File Locations
+
+- **Windows:** Files are stored in `%APPDATA%\RemoteINDIPAD\` (usually `%USERPROFILE%\AppData\Roaming\RemoteINDIPAD\`). These are `remote_indipad_sender.json` and `gamepad_profiles.json`.
+- **Linux:** `remote_indipad_receiver.json` is stored in `$XDG_CONFIG_HOME/RemoteINDIPAD/`. If `XDG_CONFIG_HOME` is not set, it is stored in `~/.config/RemoteINDIPAD/`.
 
 ## Usage
 
