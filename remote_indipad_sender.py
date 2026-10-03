@@ -58,6 +58,7 @@ from remote_indipad_paths import get_installed_package_version, get_user_config_
 
 # Configuration and Constants
 VERSION = "0.9.1b1"
+DEFAULT_JOYSTICK_WAIT_MAX = 2.0
 HOST = "127.0.0.1"
 PORT = 50007
 DEADZONE = 0.6
@@ -384,6 +385,16 @@ def _clamp_deadzone(value: object, default: float = DEADZONE) -> float:
     return min(max(deadzone, 0.0), 1.0)
 
 
+def _clamp_joystick_wait_max(value) -> float:
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_JOYSTICK_WAIT_MAX
+    if seconds != seconds or seconds < 0:
+        return DEFAULT_JOYSTICK_WAIT_MAX
+    return seconds
+
+
 def load_gui_settings(path: str | Path | None = None):
     config_path = Path(path) if path is not None else GUI_SETTINGS_PATH
     defaults = {
@@ -396,6 +407,7 @@ def load_gui_settings(path: str | Path | None = None):
         "word_wrap": False,
         "focus_step": 100,
         "deadzone": DEADZONE,
+        "joystick_wait_max": DEFAULT_JOYSTICK_WAIT_MAX,
         "action_mapping": {"controllers": []},
         "window_geometry": {},
     }
@@ -446,6 +458,7 @@ def load_gui_settings(path: str | Path | None = None):
         "word_wrap": bool(loaded.get("word_wrap", False)),
         "focus_step": focus_step,
         "deadzone": deadzone,
+        "joystick_wait_max": _clamp_joystick_wait_max(loaded.get("joystick_wait_max", DEFAULT_JOYSTICK_WAIT_MAX)),
         "action_mapping": normalized_mapping,
         "window_geometry": normalized_geometry,
     }
@@ -475,6 +488,7 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         "word_wrap": bool(settings.get("word_wrap", False)),
         "focus_step": _clamp_focus_step(settings.get("focus_step", 100), default=100),
         "deadzone": _clamp_deadzone(settings.get("deadzone", DEADZONE)),
+        "joystick_wait_max": _clamp_joystick_wait_max(settings.get("joystick_wait_max", DEFAULT_JOYSTICK_WAIT_MAX)),
         "action_mapping": _normalize_action_mapping_store(raw_mapping, controller_name=controller_name, controller_guid=controller_guid),
         "window_geometry": normalized_geometry,
     }
@@ -995,6 +1009,42 @@ def resolve_gamepad_selection(gamepad_names, selected_device: str | None = None)
 _pinned_joysticks: list | None = None
 
 
+def _get_joystick_wait_max() -> float:
+    """Return joystick_wait_max from the settings file, writing the default there when it is not set."""
+    settings = load_gui_settings()
+    try:
+        stored = protocol.load_json_file(GUI_SETTINGS_PATH) if GUI_SETTINGS_PATH.exists() else None
+    except (OSError, ValueError):
+        stored = None
+    if not isinstance(stored, dict) or "joystick_wait_max" not in stored:
+        try:
+            save_gui_settings(settings)
+        except OSError:
+            pass
+    return settings["joystick_wait_max"]
+
+
+def _wait_for_stable_joystick_count(pg, settle: float = 0.5, timeout: float | None = None) -> None:
+    """SDL may enumerate some devices (e.g. Xbox pads) asynchronously after init; wait until the count stops changing."""
+    if timeout is None:
+        timeout = _get_joystick_wait_max()
+    deadline = time.monotonic() + timeout
+    last = pg.joystick.get_count()
+    stable_since = time.monotonic()
+    while time.monotonic() < deadline:
+        time.sleep(0.05)
+        try:
+            pg.event.pump()
+        except Exception:
+            pass
+        count = pg.joystick.get_count()
+        now = time.monotonic()
+        if count != last:
+            last, stable_since = count, now
+        elif now - stable_since >= settle:
+            break
+
+
 def get_pinned_joysticks(pg=None) -> list:
     """Joysticks present at first enumeration; gamepads connected later are ignored."""
     global _pinned_joysticks
@@ -1002,6 +1052,7 @@ def get_pinned_joysticks(pg=None) -> list:
     if _pinned_joysticks is None:
         if not pg.joystick.get_init():
             pg.joystick.init()
+        _wait_for_stable_joystick_count(pg)
         _pinned_joysticks = [pg.joystick.Joystick(i) for i in range(pg.joystick.get_count())]
     return _pinned_joysticks
 
