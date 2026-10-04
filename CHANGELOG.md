@@ -2,6 +2,28 @@
 
 This file documents the change history for RemoteINDIPAD.
 
+## [v0.9.1]
+
+### Added
+
+- Added a "Start on launch" setting for the Receiver, enabled by default and saved with the GUI settings.
+- Added an Xbox One gamepad profile with detailed action mappings.
+
+### Changed
+
+- Centralized the application version in the `VERSION` file and use it for the Sender, Receiver, package, and PyInstaller builds.
+- Updated the Sender and Receiver window titles to include "RemoteINDIPAD".
+- Improved Receiver window layout and button behavior.
+
+### Bug Fixes
+
+- Fixed unstable joystick detection in the Sender by waiting for the joystick count to stabilize, with a configurable maximum wait.
+
+### Documentation
+
+- Added documentation for gamepad profiles and settings.
+- Documented configuration file locations for Windows and Linux, and clarified the Receiver's "Start on launch" setting.
+
 ## [v0.9.1-beta.1]
 
 ### Added
