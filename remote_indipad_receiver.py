@@ -1617,7 +1617,7 @@ class ReceiverWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowIcon(QIcon(str(APP_ICON_PATH)))   # Set the window icon for the application
-        self.setWindowTitle("INDIPAD HOST")             # Set the window title for the application
+        self.setWindowTitle("RemoteINDIPAD receiver")  # Set the window title for the application
         self.resize(720, 420)
         self.gui_settings = load_gui_settings()
         geometry = self.gui_settings.get("window_geometry", {})

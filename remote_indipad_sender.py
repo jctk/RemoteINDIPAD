@@ -1504,7 +1504,7 @@ class IndipadWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowIcon(QIcon(str(APP_ICON_PATH)))
-        self.setWindowTitle("INDIPAD")
+        self.setWindowTitle("RemoteINDIPAD sender")
         self.resize(720, 520)
         self.worker = None
         self.worker_thread = None
