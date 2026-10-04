@@ -266,7 +266,7 @@ RemoteINDIPAD receiver converts the "Actions" received from RemoteINDIPAD sender
 | Logs - Word Wrap | Wrap console log lines to the window width. |
 | Scan INDI | Scan for available INDI drivers and populate each driver list. |
 | Start / Stop | Toggle button. Shows "Start" until listening begins (automatically at launch when `Start on launch` is on). After Start reaches LISTEN it becomes "Stop". While LISTEN / ESTABLISHED, the INDI driver combos and [Scan INDI] are disabled. Stop ends LISTEN/ESTABLISHED, shows "---" for the status, and stops any running MOUNT_NORTH/SOUTH/WEST/EAST and CAA_ROTATE_COUNTER_CLOCKWISE/CAA_ROTATE_CLOCKWISE motion. |
-| Start on launch | When on (the default), the receiver starts listening automatically at launch. The setting is saved in `remote_indipad_receiver.json`. |
+| Start on launch | When on (the default), the receiver starts listening automatically at launch. |
 | Close | Close RemoteINDIPAD receiver. |
 | INDIPAD console | Display operation and communication status. |
 | Clear | Clear the console. |
