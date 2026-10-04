@@ -106,9 +106,8 @@ Sender のゲームパッド別デフォルトマッピング定義は [`gamepad
 | `actions` | 真偽値 | `false` | Action 実行ログの表示設定。 |
 | `dbus` | 真偽値 | `false` | D-Bus 呼び出し・結果ログの表示設定。 |
 | `word_wrap` | 真偽値 | `false` | コンソールの行折り返し設定。 |
+| `start_on_launch` | 真偽値 | `true` | `true` の場合は、アプリケーション起動時に Start 操作を行い待受を開始する。`false` の場合は起動時に待受を開始せず、手動で Start する。`host` / `listen_target` と `port` は待受の開始に使われる。 |
 | `window_geometry` | オブジェクト | `{}` | ウィンドウ位置・サイズ。`x`、`y`、`width`、`height` を整数で保持する。 |
-
-待受はアプリケーション起動時には開始されない。`host` / `listen_target` と `port` は Start 操作で待受を開始する際に使われる。
 
 ### 4.2 `listen_target`
 
@@ -155,6 +154,7 @@ Sender のゲームパッド別デフォルトマッピング定義は [`gamepad
   "actions": false,
   "dbus": false,
   "word_wrap": false,
+  "start_on_launch": true,
   "window_geometry": {}
 }
 ```

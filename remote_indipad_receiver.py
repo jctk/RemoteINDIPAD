@@ -79,7 +79,12 @@ elif "__file__" in globals():
 else:
     _MODULE_DIR = Path.cwd()
 _PACKAGE_VERSION = get_installed_package_version()
-_IS_INSTALLED_PACKAGE = _PACKAGE_VERSION is not None and not getattr(sys, "frozen", False)
+# Running the file directly as a script always uses the script folder, even if the package is installed
+_IS_INSTALLED_PACKAGE = (
+    _PACKAGE_VERSION is not None
+    and not getattr(sys, "frozen", False)
+    and __name__ != "__main__"
+)
 _PACKAGE_DATA_DIR = (
     Path(sysconfig.get_path("data")) / "share" / "RemoteINDIPAD"
     if _IS_INSTALLED_PACKAGE
@@ -112,6 +117,7 @@ DEFAULT_GUI_SETTINGS = {
     "actions": False,
     "dbus": False,
     "word_wrap": False,
+    "start_on_launch": True,
     "window_geometry": {},
 }
 
@@ -1438,6 +1444,7 @@ def load_gui_settings(path: str | Path | None = None):
         "actions": bool(loaded.get("actions", False)),
         "dbus": bool(loaded.get("dbus", False)),
         "word_wrap": bool(loaded.get("word_wrap", False)),
+        "start_on_launch": bool(loaded.get("start_on_launch", True)),
         "window_geometry": normalized_geometry,
     }
 
@@ -1481,6 +1488,7 @@ def save_gui_settings(settings: dict, path: str | Path | None = None):
         "actions": bool(settings.get("actions", False)),
         "dbus": bool(settings.get("dbus", False)),
         "word_wrap": bool(settings.get("word_wrap", False)),
+        "start_on_launch": bool(settings.get("start_on_launch", True)),
         "window_geometry": normalized_geometry,
     }
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1721,12 +1729,19 @@ class ReceiverWindow(QMainWindow):
         button_row = QHBoxLayout()
         self.scan_button = QPushButton("Scan INDI")
         self.toggle_button = QPushButton("Start")
+        self.start_on_launch_checkbox = QCheckBox("Start on launch")
+        self.start_on_launch_checkbox.setChecked(
+            bool(self.gui_settings.get("start_on_launch", True))
+        )
         self.close_button = QPushButton("Close")
 
         # Set the size policy for the buttons to expand horizontally
-        for button in (self.scan_button, self.toggle_button, self.close_button):
+        for button in (self.scan_button, self.toggle_button):
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             button_row.addWidget(button)
+        button_row.addWidget(self.start_on_launch_checkbox)
+        self.close_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        button_row.addWidget(self.close_button)
 
         # Add the console widget and its associated button row to the main layout
         self.console = QTextEdit()
@@ -1761,12 +1776,18 @@ class ReceiverWindow(QMainWindow):
         self.requests_checkbox.toggled.connect(self.on_requests_toggled)
         self.actions_checkbox.toggled.connect(self.on_actions_toggled)
         self.dbus_checkbox.toggled.connect(self.on_dbus_toggled)
+        self.start_on_launch_checkbox.toggled.connect(self.on_start_on_launch_toggled)
         self.listen_refresh_button.clicked.connect(self.on_rescan_network_addresses)
         self.scan_button.clicked.connect(self.on_scan_indi)
         self.toggle_button.clicked.connect(self.on_toggle_receiver)
         self.close_button.clicked.connect(self.on_close)
-        QTimer.singleShot(0, self.on_scan_indi)
+        QTimer.singleShot(0, self._startup_scan_and_listen)
         self.log("Ready")
+
+    def _startup_scan_and_listen(self):
+        self.on_scan_indi()
+        if self.start_on_launch_checkbox.isChecked() and not self._receiver_running:
+            self.start_receiver()
 
     def _append_log(self, message: str):
         append_console_message(self.console, timestamp_log_message(message))
@@ -1996,6 +2017,7 @@ class ReceiverWindow(QMainWindow):
             "actions": self.actions_checkbox.isChecked(),
             "dbus": self.dbus_checkbox.isChecked(),
             "word_wrap": self.word_wrap_checkbox.isChecked(),
+            "start_on_launch": self.start_on_launch_checkbox.isChecked(),
             "window_geometry": {
                 "x": self.x(),
                 "y": self.y(),
@@ -2013,6 +2035,9 @@ class ReceiverWindow(QMainWindow):
             settings["rotator"] = ""
         self.gui_settings = settings
         save_gui_settings(settings)
+
+    def on_start_on_launch_toggled(self, _enabled: bool):
+        self.save_settings()
 
     def on_heartbeat_toggled(self, enabled: bool):
         if hasattr(self, "receiver"):

@@ -198,7 +198,7 @@ See the instructions for each distribution format for how to launch the programs
 1. Start KStars on StellarMate OS and start the Ekos Profile. If you are using a mount, unpark it first.
 1. Start `remote_indipad_receiver` on StellarMate OS.
 1. The device names from the started Ekos Profile are displayed in the Mount / Focuser / Filter Wheel / Rotator dropdown lists. If multiple devices of the same type are connected, select one manually from the appropriate dropdown list.
-1. Click `[Start]` on the receiver to listen for a connection. Its status changes to `LISTEN`.
+1. Click `[Start]` on the receiver to listen for a connection. Its status changes to `LISTEN`. If `Start on launch` is on (the default), the receiver starts listening automatically at launch.
 1. Connect the GAMEPAD to the Windows PC.
 1. Start `remote_indipad_sender.exe` on Windows.
 1. Select the GAMEPAD to use in `[Controller]`, then click `[Edit Mapping]` to open the INDIPAD Mapping Editor. Map the DPAD / Buttons / Axes to KStars / INDI operations. When mapping is complete, close the INDIPAD Mapping Editor with `[Close]`.
@@ -265,7 +265,8 @@ RemoteINDIPAD receiver converts the "Actions" received from RemoteINDIPAD sender
 | Logs - D-BUS | Display D-BUS calls and returned results in the console. |
 | Logs - Word Wrap | Wrap console log lines to the window width. |
 | Scan INDI | Scan for available INDI drivers and populate each driver list. |
-| Start / Stop | Toggle button. The receiver does not listen at launch and shows "Start". After Start reaches LISTEN it becomes "Stop". While LISTEN / ESTABLISHED, the INDI driver combos and [Scan INDI] are disabled. Stop ends LISTEN/ESTABLISHED, shows "---" for the status, and stops any running MOUNT_NORTH/SOUTH/WEST/EAST and CAA_ROTATE_COUNTER_CLOCKWISE/CAA_ROTATE_CLOCKWISE motion. |
+| Start / Stop | Toggle button. Shows "Start" until listening begins (automatically at launch when `Start on launch` is on). After Start reaches LISTEN it becomes "Stop". While LISTEN / ESTABLISHED, the INDI driver combos and [Scan INDI] are disabled. Stop ends LISTEN/ESTABLISHED, shows "---" for the status, and stops any running MOUNT_NORTH/SOUTH/WEST/EAST and CAA_ROTATE_COUNTER_CLOCKWISE/CAA_ROTATE_CLOCKWISE motion. |
+| Start on launch | When on (the default), the receiver starts listening automatically at launch. The setting is saved in `remote_indipad_receiver.json`. |
 | Close | Close RemoteINDIPAD receiver. |
 | INDIPAD console | Display operation and communication status. |
 | Clear | Clear the console. |

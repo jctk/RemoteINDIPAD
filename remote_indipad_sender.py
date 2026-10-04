@@ -70,7 +70,12 @@ elif "__file__" in globals():
 else:
     _MODULE_DIR = Path.cwd()
 _PACKAGE_VERSION = get_installed_package_version()
-_IS_INSTALLED_PACKAGE = _PACKAGE_VERSION is not None and not getattr(sys, "frozen", False)
+# Running the file directly as a script always uses the script folder, even if the package is installed
+_IS_INSTALLED_PACKAGE = (
+    _PACKAGE_VERSION is not None
+    and not getattr(sys, "frozen", False)
+    and __name__ != "__main__"
+)
 if _IS_INSTALLED_PACKAGE:
     _PACKAGE_DATA_DIR = Path(sysconfig.get_path("data")) / "share" / "RemoteINDIPAD"
 else:

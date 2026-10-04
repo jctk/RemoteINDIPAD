@@ -194,7 +194,7 @@ remote_indipad_receiver
 1. StellarMate OS で KStars を起動し Ekos Profile を Start する。Mount を使用する場合は Unpark しておく。
 1. StellarMate OS で `remote_indipad_receiver` を起動する。
 1. Mount / Focuser / Filter Wheel / Rotator のドロップダウンリストに Start 済みの Ekos Profile のデバイス名が表示される。同一種類のデバイスが複数接続されている場合はドロップダウンリストから手動選択する。
-1. `[Start]` で接続待ちにする。状態が `LISTEN` になる。
+1. `[Start]` で接続待ちにする。状態が `LISTEN` になる。`Start on launch` がオン（デフォルト）の場合は Receiver 起動時に自動で接続待ちになる。
 1. Windows PC に GAMEPAD を接続する。
 1. Windows で `remote_indipad_sender.exe` を起動する。
 1. `[Controller]` で使用する GAMEPAD を選択し `[Edit Mapping]` ボタン INDIPAD Mapping Editor を開き DPAD/Buttons/Axes にKStars/INDI の操作をマッピングする。マッピングを終えたら `[Close]`で INDIPAD Mapping Editor を閉じる。
@@ -261,7 +261,8 @@ RemoteINDIPAD receiverはRemoteINDIPAD senderからNetwork経由で受信した"
 | Logs - D-BUS | D-BUS の呼び出し内容と返却結果を Console に表示する。 |
 | Logs - Word Wrap | コンソールのログをウィンドウ幅に合わせて折り返す。 |
 | Scan INDI | 利用可能なINDIドライバーをスキャンし各ドライバーのリストに設定する。 |
-| Start / Stop | 起動直後は待ち受けせず「Start」を表示する。Start で LISTEN（待ち受け中） になると「Stop」に変わる。Stop で LISTEN / ESTABLISHED を終了し、LISTEN 表示は「---」に変化する。 |
+| Start / Stop | `Start on launch` がオン（デフォルト）の場合は起動時に待ち受けを開始する。Start で LISTEN（待ち受け中）になると「Stop」に変わる。Stop で LISTEN / ESTABLISHED を終了し、LISTEN 表示は「---」に変化する。 |
+| Start on launch | オンの場合、Receiver の起動時に自動で待ち受けを開始する。設定は `remote_indipad_receiver.json` に保存される。 |
 | Close | RemoteINDIPAD receiver を閉じる |
 | INDIPAD console | 操作や通信の状態を表示する。 |
 | Clear | コンソールをクリアする。 |

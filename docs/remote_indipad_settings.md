@@ -106,9 +106,8 @@ The gamepad-specific default mapping definitions used by the Sender are describe
 | `actions` | boolean | `false` | Whether to display action execution logs. |
 | `dbus` | boolean | `false` | Whether to display D-Bus call and result logs. |
 | `word_wrap` | boolean | `false` | Whether to wrap console lines. |
+| `start_on_launch` | boolean | `true` | When `true`, the Receiver performs the Start operation on launch and begins listening. When `false`, the Receiver does not listen on launch and must be started manually. `host` / `listen_target` and `port` are used when listening starts. |
 | `window_geometry` | object | `{}` | Window position and size, stored as integer `x`, `y`, `width`, and `height` properties. |
-
-The Receiver does not start listening on launch. `host` / `listen_target` and `port` are used when listening is started with the Start control.
 
 ### 4.2 `listen_target`
 
@@ -155,6 +154,7 @@ If an older file does not contain `listen_target`, the listening target is recon
   "actions": false,
   "dbus": false,
   "word_wrap": false,
+  "start_on_launch": true,
   "window_geometry": {}
 }
 ```

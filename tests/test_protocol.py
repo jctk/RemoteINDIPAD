@@ -1129,6 +1129,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("actions", defaults)
         self.assertIn("dbus", defaults)
         self.assertIn("word_wrap", defaults)
+        self.assertIn("start_on_launch", defaults)
         self.assertEqual(defaults["host"], "0.0.0.0")
         self.assertEqual(defaults["listen_target"]["family"], "ipv4")
         self.assertEqual(defaults["listen_target"]["mode"], "all")
@@ -1138,6 +1139,23 @@ class ProtocolTests(unittest.TestCase):
         self.assertFalse(defaults["actions"])
         self.assertFalse(defaults["dbus"])
         self.assertFalse(defaults["word_wrap"])
+        self.assertTrue(defaults["start_on_launch"])
+
+    def test_receiver_start_on_launch_setting_round_trips(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "receiver.json"
+            receiver.save_gui_settings({"start_on_launch": False}, path)
+            loaded = receiver.load_gui_settings(path)
+
+        self.assertFalse(loaded["start_on_launch"])
+
+    def test_receiver_start_on_launch_defaults_on_for_existing_settings(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "receiver.json"
+            path.write_text('{"port": 50007}\n', encoding="utf-8")
+            loaded = receiver.load_gui_settings(path)
+
+        self.assertTrue(loaded["start_on_launch"])
 
     def test_receiver_gui_word_wrap_setting_round_trips(self):
         path = Path("test_receiver_gui_settings.json")
