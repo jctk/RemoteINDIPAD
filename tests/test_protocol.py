@@ -370,6 +370,9 @@ class ProtocolTests(unittest.TestCase):
             },
         }
         class FakeCombo:
+            def currentData(self):
+                return "JC-U3712T"
+
             def currentText(self):
                 return "JC-U3712T"
         window.controller_combo = FakeCombo()
@@ -392,6 +395,9 @@ class ProtocolTests(unittest.TestCase):
                 self.stopped = True
 
         class FakeCombo:
+            def currentData(self):
+                return "Xbox One S Controller"
+
             def currentText(self):
                 return "Xbox One S Controller"
 
@@ -1098,6 +1104,7 @@ class ProtocolTests(unittest.TestCase):
             def __init__(self):
                 self.text = "Disconnect"
                 self.stylesheet = ""
+                self.enabled = True
 
             def setText(self, text):
                 self.text = text
@@ -1105,17 +1112,33 @@ class ProtocolTests(unittest.TestCase):
             def setStyleSheet(self, stylesheet):
                 self.stylesheet = stylesheet
 
+            def setEnabled(self, enabled):
+                self.enabled = enabled
+
+        class FakeControl:
+            def __init__(self):
+                self.enabled = True
+
+            def setEnabled(self, enabled):
+                self.enabled = enabled
+
         window = sender.IndipadWindow.__new__(sender.IndipadWindow)
         window.connection_button = FakeButton()
+        window.scan_button = FakeControl()
+        window.controller_combo = FakeControl()
         window.worker = object()
 
         window._handle_connection_update("Disconnected")
         self.assertEqual(window.connection_button.text, "Connect")
+        self.assertTrue(window.scan_button.enabled)
+        self.assertTrue(window.controller_combo.enabled)
         self.assertIsNone(window.worker)
 
         window.worker = object()
         window._handle_connection_update("Connected: Test Controller")
         self.assertEqual(window.connection_button.text, "Disconnect")
+        self.assertFalse(window.scan_button.enabled)
+        self.assertFalse(window.controller_combo.enabled)
 
     def test_receiver_gui_settings_have_expected_defaults(self):
         defaults = receiver.load_gui_settings(path=Path("/tmp/does-not-exist.json"))
@@ -1682,12 +1705,16 @@ class ProtocolTests(unittest.TestCase):
             def __init__(self):
                 self.enabled = True
                 self.tooltip = ""
+                self.text = ""
 
             def setEnabled(self, enabled):
                 self.enabled = enabled
 
             def setToolTip(self, tooltip):
                 self.tooltip = tooltip
+
+            def setText(self, text):
+                self.text = text
 
         class FakeModel:
             def __init__(self, item):
@@ -1701,6 +1728,9 @@ class ProtocolTests(unittest.TestCase):
                 self.target = target
                 self.text = "192.0.2.4 (Test Network)"
                 self.fake_item = FakeItem()
+
+            def setEnabled(self, enabled):
+                self.enabled = enabled
 
             def count(self):
                 return 1
@@ -1722,6 +1752,17 @@ class ProtocolTests(unittest.TestCase):
             def model(self):
                 return FakeModel(self.fake_item)
 
+        class FakeWidget:
+            def __init__(self):
+                self.enabled = True
+                self.text = ""
+
+            def setEnabled(self, enabled):
+                self.enabled = enabled
+
+            def setText(self, text):
+                self.text = text
+
         target = {
             "mode": "address",
             "family": "ipv4",
@@ -1732,6 +1773,13 @@ class ProtocolTests(unittest.TestCase):
         }
         window = receiver.ReceiverWindow.__new__(receiver.ReceiverWindow)
         window.listen_combo = FakeCombo(target)
+        window.toggle_button = FakeWidget()
+        window.mount_combo = FakeWidget()
+        window.focuser_combo = FakeWidget()
+        window.filter_combo = FakeWidget()
+        window.rotator_combo = FakeWidget()
+        window.scan_button = FakeWidget()
+        window.service_status_label = FakeWidget()
         window.log_queue = receiver.QueueLogHandler()
         window.log_queue.emit_bind_failure({
             **target,
